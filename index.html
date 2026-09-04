@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="InterviewLens - practical interview preparation from a job title or job description." />
+  <title>InterviewLens — Prepare smarter</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="nav"><a class="brand" href="#">Interview<span>Lens</span></a><span class="tag">Real questions. Better preparation.</span></header>
+  <main>
+    <section class="hero">
+      <div class="eyebrow">INTERVIEW PREP, WITHOUT THE GUESSWORK</div>
+      <h1>Know what to prepare<br><span>before you walk in.</span></h1>
+      <p>Enter a job title or paste a job description. InterviewLens builds a focused preparation pack with likely questions, answers, topics and a pre-interview checklist.</p>
+      <div class="search-card">
+        <input id="role" placeholder="e.g. Data Analyst, Python Developer, HR Executive" aria-label="Job title" />
+        <textarea id="jd" placeholder="Optional: paste the job description for more accurate questions..."></textarea>
+        <button id="generate">Build my interview pack →</button>
+      </div>
+      <div class="trust-row"><span>✓ No sign-up for the first version</span><span>✓ Community reported questions</span><span>✓ Works on phone & PC</span></div>
+    </section>
+
+    <section id="results" class="results hidden">
+      <div class="result-head"><div><div class="eyebrow">YOUR PREPARATION PACK</div><h2 id="resultTitle"></h2><p id="resultSub"></p></div><button class="outline" id="reset">New role</button></div>
+      <div class="signal"><div><strong id="confidence">Preparation confidence: —</strong><p>This is a transparent signal based on community confirmations, not a promise that a question will appear.</p></div><div class="signal-number" id="signalNumber">0</div></div>
+      <div class="grid">
+        <article class="panel wide"><div class="panel-title"><h3>🔥 Top questions to prepare</h3><span class="pill">High priority</span></div><div id="questions"></div></article>
+        <article class="panel"><div class="panel-title"><h3>🧠 Technical topics</h3></div><ul id="topics"></ul></article>
+        <article class="panel"><div class="panel-title"><h3>💬 HR & behavioral</h3></div><ul id="behavioral"></ul></article>
+        <article class="panel"><div class="panel-title"><h3>✅ Before the interview</h3></div><ul id="checklist"></ul></article>
+        <article class="panel wide"><div class="panel-title"><h3>How the trust signal works</h3></div><div class="steps"><span>1</span><p>We recommend a question from the role/JD or research.</p><span>2</span><p>After your interview, tap <b>“I was asked this”</b> if it really happened.</p><span>3</span><p>Confirmed reports build a community signal for future candidates.</p></div></article>
+      </div>
+    </section>
+  </main>
+  <footer>InterviewLens MVP · Questions are preparation guidance, not guaranteed interview leaks.</footer>
+  <script src="app.js"></script>
+</body>
+</html>
