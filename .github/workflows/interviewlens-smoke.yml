@@ -71,10 +71,24 @@ jobs:
           print('JD keywords:', keys)
           PY
 
+      - name: Check interview experience endpoint
+        shell: bash
+        run: |
+          curl -fsS 'https://interviewlens-api.vercel.app/experiences/Data%20Analyst' > experiences.json
+          python - <<'PY'
+          import json
+          d=json.load(open('experiences.json'))
+          assert d.get('role_key') == 'data analyst', d
+          assert isinstance(d.get('items'), list), d
+          print('Interview experience endpoint: PASS')
+          print('Existing reported questions:', len(d['items']))
+          PY
+
       - name: Check live GitHub Pages site
         shell: bash
         run: |
           curl -fsS https://karanaldo-07.github.io/web/ > site.html
           grep -q 'InterviewLens' site.html
           grep -q 'app.js' site.html
+          grep -q 'Candidate interview experiences' site.html
           echo 'GitHub Pages: PASS'
