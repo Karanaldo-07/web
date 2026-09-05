@@ -225,7 +225,13 @@ def add_experience(req:ExperienceRequest,request:Request):
 
 @app.get('/experiences/{role}')
 def experiences(role:str,company:str=''):
-    return {'role_key':role_key(role),'company':company.strip(),'items':experience_rows(role,company.strip())}
+    try:
+        return {'role_key':role_key(role),'company':company.strip(),'items':experience_rows(role,company.strip())}
+    except requests.RequestException as exc:
+        status=getattr(exc.response,'status_code',None)
+        if status == 404:
+            raise HTTPException(404,'Interview experience database table is not available')
+        raise HTTPException(503,'Community database is temporarily unavailable')
 
 @app.get('/questions/{role}')
 def questions(role:str): return question_rows(role)
