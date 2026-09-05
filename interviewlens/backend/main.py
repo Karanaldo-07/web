@@ -13,7 +13,6 @@ from research import search_web
 
 DB=os.path.join('/tmp','interviewlens.db') if os.getenv('VERCEL') else 'interviewlens.db'
 SUPABASE_URL=os.getenv('SUPABASE_URL','').rstrip('/')
-# Prefer Supabase's current server-only secret key; keep legacy service_role compatibility during migration.
 SUPABASE_KEY=os.getenv('SUPABASE_SECRET_KEY') or os.getenv('SUPABASE_SERVICE_ROLE_KEY','')
 CONFIRM_SALT=os.getenv('INTERVIEWLENS_CONFIRM_SALT','change-this-salt')
 
@@ -44,6 +43,7 @@ def sb_request(method,path,params=None,json_body=None,prefer='return=representat
     r.raise_for_status(); return r.json() if r.text else None
 
 def question_rows(role):
+    role=role_key(role)
     if persistent_enabled():
         try:
             return sb_request('GET','questions',params={'select':'id,question,confirmations','role':f'eq.{role}','order':'confirmations.desc,id.asc','limit':'12'}) or []
@@ -52,6 +52,7 @@ def question_rows(role):
         return [dict(r) for r in c.execute('SELECT id,question,confirmations FROM questions WHERE role=? ORDER BY confirmations DESC,id ASC LIMIT 12',(role,)).fetchall()]
 
 def seed_questions(role,questions):
+    role=role_key(role)
     if persistent_enabled():
         try:
             sb_request('POST','questions',params={'on_conflict':'role,question'},json_body=[{'role':role,'question':q} for q in questions],prefer='resolution=ignore-duplicates,return=minimal'); return
@@ -67,7 +68,7 @@ SEED={'data analyst':['Explain INNER JOIN vs LEFT JOIN with an example.','How wo
 KEYWORD_QUESTIONS={'sql':['How would you use window functions to solve an analytical problem?','How would you optimize a slow SQL query?'],'python':['How do you test and debug Python code?','How would you improve the performance of a Python program?'],'pandas':['How would you use Pandas to clean and transform a dataset?','How do you handle missing values in Pandas?'],'power bi':['How would you design a Power BI dashboard for business stakeholders?','What is the difference between a measure and a calculated column in Power BI?'],'tableau':['How would you build an effective Tableau dashboard?','What is a Tableau calculated field and when would you use it?'],'excel':['How would you use PivotTables and lookup functions to analyze data?'],'statistics':['Which statistical methods would you use to compare two groups?','How would you explain statistical significance to a non-technical stakeholder?'],'machine learning':['How would you evaluate a machine learning model?','How would you handle overfitting in a machine learning model?'],'rest api':['How would you design and secure a REST API?'],'fastapi':['How would you structure a FastAPI application for production?'],'django':['How would you structure a Django application and its models?'],'aws':['How would you deploy and monitor an application on AWS?'],'azure':['How would you deploy and monitor an application on Azure?'],'docker':['Why would you use Docker and how would you containerize an application?'],'kubernetes':['What problem does Kubernetes solve and how would you deploy an application with it?'],'git':['How do you use Git to manage changes and resolve merge conflicts?'],'javascript':['What is the difference between var, let and const in JavaScript?'],'react':['How does React manage component state and rendering?'],'java':['What is the difference between an interface and an abstract class in Java?'],'c++':['What is the difference between a pointer and a reference in C++?'],'c#':['What is the difference between an interface and an abstract class in C#?']}
 
 def role_key(role):
-    r=role.lower()
+    r=re.sub(r'\s+',' ',(role or '').lower()).strip()
     if 'analyst' in r:return 'data analyst'
     if 'python' in r:return 'python developer'
     return 'software engineer'
@@ -84,11 +85,11 @@ def health(): return {'status':'ok','database':'supabase' if persistent_enabled(
 @app.post('/prep')
 def prep(req:PrepRequest,request:Request):
     rate_limit(request,'prep',30,300)
-    role=req.role.strip() or 'Software Engineer'; questions=[]; seen=set()
-    for q in SEED.get(role_key(role),SEED['software engineer'])+jd_questions(req.job_description):
+    role=req.role.strip() or 'Software Engineer'; canonical=role_key(role); questions=[]; seen=set()
+    for q in SEED.get(canonical,SEED['software engineer'])+jd_questions(req.job_description):
         key=q.lower().strip()
         if key not in seen: seen.add(key); questions.append(q)
-    seed_questions(role,questions[:12]); rows=question_rows(role)
+    seed_questions(canonical,questions[:12]); rows=question_rows(canonical)
     return {'role':role,'questions':rows,'evidence_note':'Role and JD questions are recommendations unless a question has candidate confirmations.','database':'persistent' if persistent_enabled() else 'mvp'}
 
 @app.post('/research')
