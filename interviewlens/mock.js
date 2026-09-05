@@ -1,0 +1,149 @@
+(() => {
+  const API = window.INTERVIEWLENS_API || '';
+  let questions = [];
+  let index = 0;
+  let scores = [];
+  let active = false;
+
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const stop = new Set(['what','why','how','would','could','should','the','a','an','is','are','do','you','your','for','and','or','to','of','in','on','with','this','that','me','i','it','be','from','as','at','can','tell','explain','difference','between']);
+  const terms = q => [...new Set((q.toLowerCase().match(/[a-z][a-z0-9+#.-]{2,}/g) || []).filter(x => !stop.has(x)))].slice(0, 8);
+
+  function ensureUI() {
+    if (document.getElementById('mockCard')) return;
+    const results = document.getElementById('results');
+    const head = results?.querySelector('.result-head');
+    if (!results || !head) return;
+    const card = document.createElement('article');
+    card.id = 'mockCard';
+    card.className = 'card wide mock-card';
+    card.innerHTML = `
+      <div class="card-title"><h3>🎤 AI Mock Interview</h3><span id="mockBadge">5-question practice</span></div>
+      <p class="section-note">Practice the same role/JD themes without seeing the guidance first. Your answer is scored on completeness, relevance, structure, and specificity.</p>
+      <div id="mockStart">
+        <div class="mock-intro"><strong>How it works</strong><span>5 questions · answer in your own words · get feedback after each answer</span></div>
+        <button id="startMock" class="primary-action">Start mock interview →</button>
+      </div>
+      <div id="mockSession" class="hidden">
+        <div class="mock-progress"><span id="mockProgress">Question 1 of 5</span><span id="mockScoreLive">Score: —</span></div>
+        <div class="mock-question" id="mockQuestion"></div>
+        <textarea id="mockAnswer" class="mock-answer" placeholder="Type your answer as if you were speaking to the interviewer..."></textarea>
+        <div class="mock-actions"><button id="submitMock" class="primary-action">Evaluate answer</button></div>
+        <div id="mockFeedback" class="mock-feedback hidden"></div>
+      </div>
+      <div id="mockDone" class="hidden"></div>`;
+    head.insertAdjacentElement('afterend', card);
+
+    const style = document.createElement('style');
+    style.textContent = `.mock-card{margin-bottom:16px}.mock-intro{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:14px;background:#f7f8fc;border:1px solid #e5e6ee;border-radius:12px;margin:12px 0 14px}.mock-intro strong{font-size:14px}.mock-intro span{font-size:13px;color:#777d8d}.mock-progress{display:flex;justify-content:space-between;color:#777d8d;font-size:12px;font-weight:700;margin:12px 0}.mock-question{font-size:20px;font-weight:750;line-height:1.45;padding:18px;background:#fbfbfe;border:1px solid #e5e6ee;border-radius:12px}.mock-answer{width:100%;height:170px;margin-top:12px;border:1px solid #dfe2ec;border-radius:12px;padding:14px;font:inherit;resize:vertical;outline:0}.mock-actions{display:flex;justify-content:flex-end;margin-top:10px}.mock-feedback{margin-top:14px;padding:16px;border:1px solid #e3e5ed;border-radius:12px;background:#fff}.mock-score-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}.mock-score{padding:10px;border-radius:10px;background:#f7f8fc;text-align:center}.mock-score b{display:block;font-size:20px}.mock-score small{color:#777d8d}.mock-feedback h4{margin:14px 0 7px}.mock-feedback ul{margin:0;padding-left:20px}.mock-feedback li{padding:4px 0;color:#5e6372;line-height:1.4}.mock-next{margin-top:14px}.mock-final{text-align:center;padding:20px;background:#fbfbfe;border:1px solid #e5e6ee;border-radius:12px}.mock-final .big{font-size:52px;font-weight:800;color:#6b5cff}.mock-final p{color:#666b7a}.mock-summary{text-align:left;margin-top:16px}.mock-summary div{padding:9px 0;border-top:1px solid #eeeef3}@media(max-width:700px){.mock-score-grid{grid-template-columns:repeat(2,1fr)}.mock-question{font-size:18px}}`;
+    document.head.appendChild(style);
+    document.getElementById('startMock').addEventListener('click', start);
+    document.getElementById('submitMock').addEventListener('click', evaluate);
+  }
+
+  async function loadQuestions() {
+    const role = (document.getElementById('role')?.value || 'Software Engineer').trim();
+    const jd = (document.getElementById('jd')?.value || '').trim();
+    if (API) {
+      try {
+        const r = await fetch(API + '/prep', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({role, job_description:jd})});
+        if (r.ok) {
+          const data = await r.json();
+          if (Array.isArray(data.questions) && data.questions.length) return data.questions.map(x => x.question).filter(Boolean).slice(0,5);
+        }
+      } catch (_) {}
+    }
+    const key = typeof canonicalRole === 'function' ? canonicalRole(role) : 'software engineer';
+    const fallback = (typeof localQuestions !== 'undefined' && localQuestions[key]) || ['Tell me about yourself.','Describe a project you worked on.','What is your strongest technical skill?','How do you approach debugging a difficult problem?','Why are you a good fit for this role?'];
+    return fallback.slice(0,5);
+  }
+
+  async function start() {
+    ensureUI();
+    const button = document.getElementById('startMock');
+    button.disabled = true; button.textContent = 'Preparing questions…';
+    questions = await loadQuestions();
+    index = 0; scores = []; active = true;
+    document.getElementById('mockStart').classList.add('hidden');
+    document.getElementById('mockSession').classList.remove('hidden');
+    document.getElementById('mockDone').classList.add('hidden');
+    document.getElementById('mockBadge').textContent = 'In progress';
+    renderQuestion();
+  }
+
+  function renderQuestion() {
+    document.getElementById('mockProgress').textContent = `Question ${index+1} of ${questions.length}`;
+    document.getElementById('mockScoreLive').textContent = scores.length ? `Last score: ${scores[scores.length-1]}/100` : 'Score: —';
+    document.getElementById('mockQuestion').textContent = questions[index];
+    const answer = document.getElementById('mockAnswer'); answer.value=''; answer.focus();
+    document.getElementById('mockFeedback').classList.add('hidden');
+    document.getElementById('submitMock').disabled = false;
+    document.getElementById('submitMock').textContent = 'Evaluate answer';
+  }
+
+  function scoreAnswer(question, answer) {
+    const words = answer.trim().split(/\s+/).filter(Boolean);
+    const lower = answer.toLowerCase();
+    const ts = terms(question);
+    const hits = ts.filter(t => lower.includes(t)).length;
+    const relevance = Math.min(30, Math.round((hits / Math.max(3, Math.min(6, ts.length))) * 30));
+    const completeness = words.length < 12 ? 5 : words.length < 30 ? 15 : words.length < 70 ? 24 : 30;
+    const structureSignals = ['first','then','because','however','for example','example','finally','result','step','approach','situation','task','action'].filter(x => lower.includes(x)).length;
+    const structure = Math.min(20, 8 + structureSignals * 3);
+    const specificSignals = [/\b\d+(?:\.\d+)?%?\b/, /for example|e\.g\./, /sql|python|java|javascript|react|aws|azure|docker|power bi|pandas|git|api|database/i, /project|production|customer|stakeholder/i];
+    const specificity = Math.min(20, specificSignals.filter(r => r.test(answer)).length * 5);
+    const total = Math.max(0, Math.min(100, relevance + completeness + structure + specificity));
+    const strengths=[]; const improvements=[];
+    if (relevance >= 21) strengths.push('You stayed relevant to the question.'); else improvements.push('Address the key terms in the question more directly.');
+    if (completeness >= 24) strengths.push('Your answer had enough detail to be useful.'); else improvements.push('Add more explanation, reasoning, or steps instead of stopping early.');
+    if (structure >= 17) strengths.push('The answer had a clear flow.'); else improvements.push('Use a simple structure: approach → example → trade-off/result.');
+    if (specificity >= 15) strengths.push('You used concrete details.'); else improvements.push('Add a real example, tool, metric, constraint, or result.');
+    return {total,relevance,completeness,structure,specificity,strengths,improvements};
+  }
+
+  function guidance(question) {
+    const t = question.toLowerCase();
+    if (t.includes('sql') || t.includes('database') || t.includes('query')) return 'A strong answer should explain the concept, show a small example/query, discuss edge cases, and mention performance where relevant.';
+    if (t.includes('python')) return 'A strong answer should define the Python concept, give a compact example, explain when you would use it, and mention a trade-off.';
+    if (t.includes('api') || t.includes('rest')) return 'Cover the API contract, validation, authentication, errors, database interaction, testing, and observability.';
+    if (t.includes('design') || t.includes('system') || t.includes('scale')) return 'Start with requirements, propose a simple design, then discuss data flow, scale, reliability, security, and trade-offs.';
+    if (t.includes('project') || t.includes('tell me') || t.includes('why')) return 'Use a concise STAR-style story: situation, task, your action, and measurable result. Emphasize your individual contribution.';
+    return 'Start with the direct answer, explain your reasoning, give a concrete example, and finish with a trade-off or validation step.';
+  }
+
+  function evaluate() {
+    if (!active) return;
+    const answer = document.getElementById('mockAnswer').value.trim();
+    if (answer.length < 5) { document.getElementById('mockAnswer').focus(); return; }
+    const result = scoreAnswer(questions[index], answer);
+    scores.push(result.total);
+    document.getElementById('mockScoreLive').textContent = `Last score: ${result.total}/100`;
+    const feedback = document.getElementById('mockFeedback');
+    feedback.innerHTML = `<strong>${result.total >= 80 ? 'Strong answer' : result.total >= 60 ? 'Good foundation' : 'Needs more depth'}</strong>
+      <div class="mock-score-grid"><div class="mock-score"><b>${result.relevance}</b><small>Relevance /30</small></div><div class="mock-score"><b>${result.completeness}</b><small>Completeness /30</small></div><div class="mock-score"><b>${result.structure}</b><small>Structure /20</small></div><div class="mock-score"><b>${result.specificity}</b><small>Specificity /20</small></div></div>
+      <h4>What went well</h4><ul>${result.strengths.map(esc).map(x=>`<li>${x}</li>`).join('')}</ul>
+      <h4>Improve next time</h4><ul>${result.improvements.map(esc).map(x=>`<li>${x}</li>`).join('')}</ul>
+      <h4>Strong-answer direction</h4><p>${esc(guidance(questions[index]))}</p>
+      <button id="nextMock" class="primary-action mock-next">${index+1 < questions.length ? 'Next question →' : 'Finish interview →'}</button>`;
+    feedback.classList.remove('hidden');
+    document.getElementById('submitMock').disabled = true;
+    document.getElementById('nextMock').addEventListener('click', () => {
+      if (index+1 < questions.length) { index++; renderQuestion(); } else finish();
+    });
+  }
+
+  function finish() {
+    active = false;
+    const avg = Math.round(scores.reduce((a,b)=>a+b,0) / Math.max(1,scores.length));
+    const label = avg >= 85 ? 'Interview-ready foundation' : avg >= 70 ? 'Good — polish the weak spots' : avg >= 55 ? 'Keep practicing' : 'Needs focused preparation';
+    document.getElementById('mockSession').classList.add('hidden');
+    const done = document.getElementById('mockDone');
+    done.classList.remove('hidden');
+    done.innerHTML = `<div class="mock-final"><div class="big">${avg}/100</div><h3>${label}</h3><p>Average across ${scores.length} answers.</p><div class="mock-summary">${scores.map((s,i)=>`<div><strong>Q${i+1}</strong> · ${s}/100</div>`).join('')}</div><button id="restartMock" class="primary-action" style="margin-top:16px">Practice again</button></div>`;
+    document.getElementById('mockBadge').textContent = 'Completed';
+    document.getElementById('restartMock').addEventListener('click', start);
+  }
+
+  const observer = new MutationObserver(() => { if (!document.getElementById('mockCard') && !document.getElementById('results')?.classList.contains('hidden')) ensureUI(); });
+  document.addEventListener('DOMContentLoaded', () => observer.observe(document.body, {childList:true,subtree:true}));
+})();
