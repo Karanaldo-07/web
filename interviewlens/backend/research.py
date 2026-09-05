@@ -4,14 +4,12 @@ import requests
 
 TAVILY_URL='https://api.tavily.com/search'
 
-QUESTION_PATTERNS=(
-    re.compile(r'(?i)(?:asked|ask|question|questions|interviewers? asked)[^?]{0,180}\?'),
-    re.compile(r'(?i)(?:^|[.!]\s+)(?:what|why|how|when|where|which|explain|describe|tell me|walk me through|write)\b[^?]{8,180}\?'),
-)
+QUESTION_START=re.compile(r'(?i)^(what|why|how|when|where|which|who|explain|describe|tell me|walk me through|write|can you|could you|would you|have you)\b')
 
 
 def _clean_question(text):
     text=re.sub(r'<[^>]+>', ' ', text or '')
+    text=re.sub(r'#+\s*', '', text)
     text=re.sub(r'\s+', ' ', text).strip(' .-–—')
     if not text.endswith('?'):
         text += '?'
@@ -19,28 +17,40 @@ def _clean_question(text):
 
 
 def extract_question_leads(sources):
-    """Extract cautious question leads from search snippets.
+    """Extract only clean question-shaped leads from search snippets.
 
-    These are research leads, not verified interview reports. A later version can
-    fetch permitted page content and use stronger evidence classification.
+    These are research leads, not verified interview reports.
     """
     leads=[]
     seen=set()
+    bad_phrases=(
+        'interview experience', 'interview questions',
+        'questions asked in interview', 'what happened?',
+        'what does a data analyst do?'
+    )
     for source in sources:
         text=f"{source.get('title','')} {source.get('snippet','')}"
-        candidates=[]
-        for pattern in QUESTION_PATTERNS:
-            candidates.extend(pattern.findall(text))
-        for raw in candidates:
+        # Search snippets often contain several sentences. Only keep sentences
+        # that look like complete questions and begin with an interrogative.
+        for raw in re.findall(r'[^?]{8,220}\?', text):
             q=_clean_question(raw)
             key=re.sub(r'[^a-z0-9]+',' ',q.lower()).strip()
+            if not QUESTION_START.match(q):
+                continue
             if len(key)<15 or key in seen or len(q)>220:
                 continue
-            if any(skip in key for skip in ('interview experience','interview questions','questions asked in interview')):
+            if any(skip in key for skip in bad_phrases):
                 continue
             seen.add(key)
-            leads.append({'question':q,'evidence_type':'research_lead','source_url':source.get('url',''),'source_title':source.get('title','')})
-    return leads[:20]
+            leads.append({
+                'question':q,
+                'evidence_type':'research_lead',
+                'source_url':source.get('url',''),
+                'source_title':source.get('title','')
+            })
+            if len(leads)>=20:
+                return leads
+    return leads
 
 
 def search_web(role: str, company: str = ''):
@@ -51,7 +61,11 @@ def search_web(role: str, company: str = ''):
     base=f'"{role}" interview questions'
     queries=[base, f'"{role}" interview experience', f'"{role}" technical interview questions']
     if company:
-        queries=[f'"{company}" "{role}" interview questions',f'"{company}" "{role}" interview experience',f'"{company}" "{role}" interview']
+        queries=[
+            f'"{company}" "{role}" interview questions',
+            f'"{company}" "{role}" interview experience',
+            f'"{company}" "{role}" interview'
+        ]
 
     sources=[]
     headers={
