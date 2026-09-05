@@ -43,3 +43,46 @@
   .mock-error{background:#3a2915!important;color:#f2c778!important}
   .search input:focus-visible,.research-input input:focus-visible,textarea:focus-visible,.examples button:focus-visible,.ghost:focus-visible,.search button:focus-visible,.asked:focus-visible,.modal-panel input:focus-visible,.modal-panel select:focus-visible,.primary-action:focus-visible,.modal-close:focus-visible{outline-color:#8d83ff}
 }
+
+/* Manual dark mode. */
+html[data-theme="dark"]{color-scheme:dark}
+html[data-theme="dark"] body{background:#0f1117;color:#f2f4f8}
+html[data-theme="dark"] .tag{color:#9aa1b2}
+html[data-theme="dark"] .lead,html[data-theme="dark"] .result-head p,html[data-theme="dark"] .trust p{color:#a9afbd}
+html[data-theme="dark"] .search{background:#171a22;border-color:#2b3040;box-shadow:0 10px 35px #00000035}
+html[data-theme="dark"] .search input,html[data-theme="dark"] .research-input input,html[data-theme="dark"] textarea{background:#171a22;color:#f2f4f8;border-color:#2b3040}
+html[data-theme="dark"] .search input::placeholder,html[data-theme="dark"] .research-input input::placeholder,html[data-theme="dark"] textarea::placeholder{color:#737b8e}
+html[data-theme="dark"] .search button,html[data-theme="dark"] #generate,html[data-theme="dark"] .primary-action{background:#f2f4f8;color:#11131a}
+html[data-theme="dark"] .examples button,html[data-theme="dark"] .ghost{background:#171a22;border-color:#303647;color:#d7dbe5}
+html[data-theme="dark"] .card{background:#171a22;border-color:#2b3040}
+html[data-theme="dark"] .card-title span,html[data-theme="dark"] .q-num,html[data-theme="dark"] .q small,html[data-theme="dark"] .section-note,html[data-theme="dark"] .research-empty,html[data-theme="dark"] .mock-progress,html[data-theme="dark"] .mock-intro span,html[data-theme="dark"] .mock-loading{color:#9aa1b2}
+html[data-theme="dark"] .q{border-top-color:#2b3040}
+html[data-theme="dark"] .answer{border-left-color:#343b4d}
+html[data-theme="dark"] .asked{background:#202530;border-color:#343b4d;color:#dce1eb}
+html[data-theme="dark"] .asked.confirmed{background:#163122;border-color:#2b6742;color:#8ee0aa}
+html[data-theme="dark"] .research-card{background:#13161d}
+html[data-theme="dark"] .lead-item,html[data-theme="dark"] .source{background:#171a22;border-color:#2b3040}
+html[data-theme="dark"] .source a,html[data-theme="dark"] .answer summary{color:#9b90ff}
+html[data-theme="dark"] .card li,html[data-theme="dark"] .answer p,html[data-theme="dark"] .research-leads,html[data-theme="dark"] .source small{color:#aeb5c3}
+html[data-theme="dark"] .trust small,html[data-theme="dark"] footer{color:#737b8e}
+html[data-theme="dark"] .modal{background:#000000a6}
+html[data-theme="dark"] .modal-panel{background:#171a22;color:#f2f4f8;box-shadow:0 20px 70px #00000070}
+html[data-theme="dark"] .modal-close{color:#9aa1b2}
+html[data-theme="dark"] .report-question{background:#202530;color:#dfe3eb}
+html[data-theme="dark"] .modal-panel input,html[data-theme="dark"] .modal-panel select{background:#11141a;color:#f2f4f8;border-color:#343b4d}
+html[data-theme="dark"] .privacy-note{color:#8e96a8}
+html[data-theme="dark"] .experience-card{background:#171a22}
+html[data-theme="dark"] .experience-item{background:#13161d;border-color:#2b3040}
+html[data-theme="dark"] .experience-chip{background:#202530;border-color:#343b4d;color:#aeb5c3}
+html[data-theme="dark"] .report-status{color:#9b90ff}
+html[data-theme="dark"] .mock-intro,html[data-theme="dark"] .mock-question,html[data-theme="dark"] .mock-final,html[data-theme="dark"] .mock-report{background:#13161d!important;border-color:#2b3040!important}
+html[data-theme="dark"] .mock-question{color:#f2f4f8}
+html[data-theme="dark"] .mock-answer{background:#171a22!important;color:#f2f4f8;border-color:#343b4d!important}
+html[data-theme="dark"] .mock-feedback{background:#171a22!important;border-color:#2b3040!important}
+html[data-theme="dark"] .mock-score{background:#202530!important}
+html[data-theme="dark"] .mock-feedback li,html[data-theme="dark"] .mock-report .report-summary,html[data-theme="dark"] .mock-report-section li{color:#aeb5c3!important}
+html[data-theme="dark"] .mock-report-section{background:#202530!important}
+html[data-theme="dark"] .mock-summary div{border-top-color:#2b3040}
+html[data-theme="dark"] .mock-error{background:#3a2915!important;color:#f2c778!important}
+html[data-theme="dark"] .search input:focus-visible,html[data-theme="dark"] .research-input input:focus-visible,html[data-theme="dark"] textarea:focus-visible,html[data-theme="dark"] .examples button:focus-visible,html[data-theme="dark"] .ghost:focus-visible,html[data-theme="dark"] .search button:focus-visible,html[data-theme="dark"] .asked:focus-visible,html[data-theme="dark"] .modal-panel input:focus-visible,html[data-theme="dark"] .modal-panel select:focus-visible,html[data-theme="dark"] .primary-action:focus-visible,html[data-theme="dark"] .modal-close:focus-visible,html[data-theme="dark"] .theme-toggle:focus-visible{outline-color:#8d83ff}
+html[data-theme="dark"] .theme-toggle{background:#171a22;color:#f2f4f8;border-color:#303647}
