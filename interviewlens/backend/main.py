@@ -13,7 +13,8 @@ from research import search_web
 
 DB=os.path.join('/tmp','interviewlens.db') if os.getenv('VERCEL') else 'interviewlens.db'
 SUPABASE_URL=os.getenv('SUPABASE_URL','').rstrip('/')
-SUPABASE_KEY=os.getenv('SUPABASE_SERVICE_ROLE_KEY','')
+# Prefer Supabase's current server-only secret key; keep legacy service_role compatibility during migration.
+SUPABASE_KEY=os.getenv('SUPABASE_SECRET_KEY') or os.getenv('SUPABASE_SERVICE_ROLE_KEY','')
 CONFIRM_SALT=os.getenv('INTERVIEWLENS_CONFIRM_SALT','change-this-salt')
 
 app=FastAPI(title='InterviewLens API')
