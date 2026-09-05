@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://karanaldo-07.github.io/web/sitemap.xml
