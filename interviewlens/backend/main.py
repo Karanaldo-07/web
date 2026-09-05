@@ -8,7 +8,7 @@ from datetime import datetime
 import requests
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from research import search_web
 
 DB=os.path.join('/tmp','interviewlens.db') if os.getenv('VERCEL') else 'interviewlens.db'
@@ -35,6 +35,7 @@ def sqlite_db():
 with sqlite_db() as c:
     c.execute('CREATE TABLE IF NOT EXISTS questions (id INTEGER PRIMARY KEY, role TEXT NOT NULL, question TEXT NOT NULL, confirmations INTEGER NOT NULL DEFAULT 0, UNIQUE(role,question))')
     c.execute('CREATE TABLE IF NOT EXISTS confirmations (id INTEGER PRIMARY KEY, question_id INTEGER NOT NULL, fingerprint TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(question_id,fingerprint))')
+    c.execute('CREATE TABLE IF NOT EXISTS experience_reports (id INTEGER PRIMARY KEY, question_id INTEGER NOT NULL, role TEXT NOT NULL, company TEXT NOT NULL DEFAULT "", interview_round TEXT NOT NULL DEFAULT "Technical", difficulty TEXT NOT NULL DEFAULT "Medium", fingerprint TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(question_id,fingerprint))')
 
 def persistent_enabled(): return bool(SUPABASE_URL and SUPABASE_KEY)
 
@@ -59,6 +60,12 @@ def seed_questions(role,questions):
 class PrepRequest(BaseModel): role:str; job_description:str=''
 class ConfirmRequest(BaseModel): question_id:int
 class ResearchRequest(BaseModel): role:str; company:str=''
+class ExperienceRequest(BaseModel):
+    question_id:int
+    role:str=Field(default='',max_length=120)
+    company:str=Field(default='',max_length=120)
+    interview_round:str=Field(default='Technical',max_length=40)
+    difficulty:str=Field(default='Medium',max_length=20)
 
 SEED={
 'data analyst':['Explain INNER JOIN vs LEFT JOIN with an example.','How would you find duplicate records in SQL?','Walk me through a data analysis project you worked on.','How do you handle missing or inconsistent data?','What metrics would you use to measure business performance?','Write a SQL query to find the second-highest salary.'],
@@ -127,6 +134,29 @@ def order_prep_rows(targets,rows):
         if row.get('id') not in used and len(ordered)<12: ordered.append(row)
     return ordered
 
+def experience_rows(role,company=''):
+    canonical=role_key(role)
+    params={'select':'id,question_id,company,interview_round,difficulty,created_at','role':f'eq.{canonical}','order':'created_at.desc','limit':'200'}
+    if company: params['company']=f'ilike.*{company}*'
+    if persistent_enabled():
+        raw=sb_request('GET','experience_reports',params=params) or []
+    else:
+        with sqlite_db() as c:
+            if company:
+                raw=[dict(r) for r in c.execute('SELECT id,question_id,company,interview_round,difficulty,created_at FROM experience_reports WHERE role=? AND company LIKE ? ORDER BY created_at DESC LIMIT 200',(canonical,f'%{company}%')).fetchall()]
+            else:
+                raw=[dict(r) for r in c.execute('SELECT id,question_id,company,interview_round,difficulty,created_at FROM experience_reports WHERE role=? ORDER BY created_at DESC LIMIT 200',(canonical,)).fetchall()]
+    counts={}
+    for row in raw: counts[row['question_id']]=counts.get(row['question_id'],0)+1
+    questions={r['id']:r for r in question_rows(canonical)}
+    top=[]
+    for qid,count in sorted(counts.items(),key=lambda x:(-x[1],x[0]))[:12]:
+        q=questions.get(qid)
+        if not q: continue
+        contexts=[r for r in raw if r['question_id']==qid][:5]
+        top.append({'question_id':qid,'question':q['question'],'reports':count,'contexts':[{'company':r['company'],'round':r['interview_round'],'difficulty':r['difficulty']} for r in contexts]})
+    return top
+
 @app.get('/health')
 def health():
     if not persistent_enabled(): return {'status':'ok','database':'sqlite-mvp'}
@@ -168,6 +198,34 @@ def confirm(req:ConfirmRequest,request:Request):
         if inserted: c.execute('UPDATE questions SET confirmations=confirmations+1 WHERE id=?',(req.question_id,))
         count=c.execute('SELECT confirmations FROM questions WHERE id=?',(req.question_id,)).fetchone()[0]
     return {'question_id':req.question_id,'confirmations':count,'persistent':False}
+
+@app.post('/experiences')
+def add_experience(req:ExperienceRequest,request:Request):
+    rate_limit(request,'experience',10,600)
+    role=req.role.strip() or 'Software Engineer'; canonical=role_key(role)
+    company=re.sub(r'\s+',' ',req.company.strip())[:120]
+    round_name=req.interview_round.strip() or 'Technical'
+    difficulty=req.difficulty.strip().title() or 'Medium'
+    if round_name not in {'Technical','HR / Behavioral','Managerial','Coding','System Design','Screening','Other'}: raise HTTPException(400,'Invalid interview round')
+    if difficulty not in {'Easy','Medium','Hard'}: raise HTTPException(400,'Invalid difficulty')
+    ip=(request.headers.get('x-forwarded-for') or request.client.host or 'unknown').split(',')[0].strip(); ua=request.headers.get('user-agent','')
+    fingerprint=hashlib.sha256(f'{CONFIRM_SALT}|{ip}|{ua}'.encode()).hexdigest()
+    if persistent_enabled():
+        try:
+            question=sb_request('GET','questions',params={'select':'id','id':f'eq.{req.question_id}','limit':'1'}) or []
+            if not question: raise HTTPException(404,'Question not found')
+            rows=sb_request('POST','experience_reports',params={'on_conflict':'question_id,fingerprint'},json_body=[{'question_id':req.question_id,'role':canonical,'company':company,'interview_round':round_name,'difficulty':difficulty,'fingerprint':fingerprint}],prefer='resolution=ignore-duplicates,return=representation') or []
+            return {'saved':bool(rows),'duplicate':not bool(rows),'persistent':True}
+        except HTTPException: raise
+        except requests.RequestException: raise HTTPException(503,'Community database is temporarily unavailable')
+    with sqlite_db() as c:
+        if not c.execute('SELECT id FROM questions WHERE id=?',(req.question_id,)).fetchone(): raise HTTPException(404,'Question not found')
+        inserted=c.execute('INSERT OR IGNORE INTO experience_reports(question_id,role,company,interview_round,difficulty,fingerprint,created_at) VALUES(?,?,?,?,?,?,?)',(req.question_id,canonical,company,round_name,difficulty,fingerprint,datetime.utcnow().isoformat())).rowcount
+    return {'saved':bool(inserted),'duplicate':not bool(inserted),'persistent':False}
+
+@app.get('/experiences/{role}')
+def experiences(role:str,company:str=''):
+    return {'role_key':role_key(role),'company':company.strip(),'items':experience_rows(role,company.strip())}
 
 @app.get('/questions/{role}')
 def questions(role:str): return question_rows(role)
