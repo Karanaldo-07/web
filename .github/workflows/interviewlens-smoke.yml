@@ -1,3 +1,4 @@
+# Live smoke coverage includes Gemini adaptive interviewer + GitHub Pages asset checks.
 name: InterviewLens Live Smoke Test
 
 on:
