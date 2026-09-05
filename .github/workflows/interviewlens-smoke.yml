@@ -110,18 +110,17 @@ jobs:
           print('Adaptive interviewer: PASS')
           print('Next category:', d['category'], '| difficulty:', d['difficulty'])
           PY
-          curl -fsS https://karanaldo-07.github.io/web/mock.js > mock.js
-          grep -q 'AI Mock Interview' mock.js
-          grep -q '/mock/evaluate' mock.js
-          grep -q '/mock/next' mock.js
-          echo 'Mock interview asset: PASS'
 
       - name: Check live GitHub Pages site
         shell: bash
         run: |
           curl -fsS https://karanaldo-07.github.io/web/ > site.html
+          curl -fsS https://karanaldo-07.github.io/web/mock.js > mock.js
           grep -q 'InterviewLens' site.html
           grep -q 'app.js' site.html
           grep -q 'mock.js' site.html
           grep -q 'Candidate interview experiences' site.html
-          echo 'GitHub Pages: PASS'
+          grep -q 'AI Mock Interview' mock.js
+          grep -q '/mock/evaluate' mock.js
+          grep -q '/mock/next' mock.js
+          echo 'GitHub Pages + Mock asset: PASS'
