@@ -93,10 +93,11 @@ jobs:
           d=json.load(open('mock-health.json'))
           assert d.get('status') == 'ok', d
           assert d.get('provider') == 'gemini', d
+          assert d.get('configured') is True, d
           print('Mock AI endpoint: PASS')
           print('Gemini configured:', d.get('configured'))
           PY
-          curl -fsS https://karanaldo-07.github.io/web/mock.js > mock.js
+          curl -fsS https://karanaldo-07.github.io/web/interviewlens/mock.js > mock.js
           grep -q 'AI Mock Interview' mock.js
           grep -q '/mock/evaluate' mock.js
           grep -q 'source.*gemini' mock.js
@@ -105,7 +106,7 @@ jobs:
       - name: Check live GitHub Pages site
         shell: bash
         run: |
-          curl -fsS https://karanaldo-07.github.io/web/ > site.html
+          curl -fsS https://karanaldo-07.github.io/web/interviewlens/ > site.html
           grep -q 'InterviewLens' site.html
           grep -q 'app.js' site.html
           grep -q 'mock.js' site.html
