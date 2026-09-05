@@ -65,7 +65,40 @@ class ConfirmRequest(BaseModel): question_id:int
 class ResearchRequest(BaseModel): role:str; company:str=''
 
 SEED={'data analyst':['Explain INNER JOIN vs LEFT JOIN with an example.','How would you find duplicate records in SQL?','Walk me through a data analysis project you worked on.','How do you handle missing or inconsistent data?','What metrics would you use to measure business performance?','Write a SQL query to find the second-highest salary.'],'python developer':['What is the difference between a list, tuple, set and dictionary?','Explain decorators in Python.','What are generators and when would you use them?','How would you design a REST API for a simple service?','Explain exception handling and custom exceptions.','How do you optimize slow Python code?'],'software engineer':['Explain the time complexity of your solution.','How would you detect a cycle in a linked list?','What is the difference between a process and a thread?','Explain indexing in databases.','What happens when you enter a URL in a browser?','Design a URL shortener at a high level.']}
-KEYWORD_QUESTIONS={'sql':['How would you use window functions to solve an analytical problem?','How would you optimize a slow SQL query?'],'python':['How do you test and debug Python code?','How would you improve the performance of a Python program?'],'pandas':['How would you use Pandas to clean and transform a dataset?','How do you handle missing values in Pandas?'],'power bi':['How would you design a Power BI dashboard for business stakeholders?','What is the difference between a measure and a calculated column in Power BI?'],'tableau':['How would you build an effective Tableau dashboard?','What is a Tableau calculated field and when would you use it?'],'excel':['How would you use PivotTables and lookup functions to analyze data?'],'statistics':['Which statistical methods would you use to compare two groups?','How would you explain statistical significance to a non-technical stakeholder?'],'machine learning':['How would you evaluate a machine learning model?','How would you handle overfitting in a machine learning model?'],'rest api':['How would you design and secure a REST API?'],'fastapi':['How would you structure a FastAPI application for production?'],'django':['How would you structure a Django application and its models?'],'aws':['How would you deploy and monitor an application on AWS?'],'azure':['How would you deploy and monitor an application on Azure?'],'docker':['Why would you use Docker and how would you containerize an application?'],'kubernetes':['What problem does Kubernetes solve and how would you deploy an application with it?'],'git':['How do you use Git to manage changes and resolve merge conflicts?'],'javascript':['What is the difference between var, let and const in JavaScript?'],'react':['How does React manage component state and rendering?'],'java':['What is the difference between an interface and an abstract class in Java?'],'c++':['What is the difference between a pointer and a reference in C++?'],'c#':['What is the difference between an interface and an abstract class in C#?']}
+
+KEYWORD_QUESTIONS={
+'sql':['How would you use window functions to solve an analytical problem?','How would you optimize a slow SQL query?'],
+'python':['How do you test and debug Python code?','How would you improve the performance of a Python program?'],
+'pandas':['How would you use Pandas to clean and transform a dataset?','How do you handle missing values in Pandas?'],
+'power bi':['How would you design a Power BI dashboard for business stakeholders?','What is the difference between a measure and a calculated column in Power BI?'],
+'tableau':['How would you build an effective Tableau dashboard?','What is a Tableau calculated field and when would you use it?'],
+'excel':['How would you use PivotTables and lookup functions to analyze data?'],
+'statistics':['Which statistical methods would you use to compare two groups?','How would you explain statistical significance to a non-technical stakeholder?'],
+'machine learning':['How would you evaluate a machine learning model?','How would you handle overfitting in a machine learning model?'],
+'rest api':['How would you design and secure a REST API?'],
+'fastapi':['How would you structure a FastAPI application for production?'],
+'django':['How would you structure a Django application and its models?'],
+'aws':['How would you deploy and monitor an application on AWS?'],
+'azure':['How would you deploy and monitor an application on Azure?'],
+'docker':['Why would you use Docker and how would you containerize an application?'],
+'kubernetes':['What problem does Kubernetes solve and how would you deploy an application with it?'],
+'git':['How do you use Git to manage changes and resolve merge conflicts?'],
+'javascript':['What is the difference between var, let and const in JavaScript?'],
+'react':['How does React manage component state and rendering?'],
+'java':['What is the difference between an interface and an abstract class in Java?'],
+'c++':['What is the difference between a pointer and a reference in C++?'],
+'c#':['What is the difference between an interface and an abstract class in C#?']}
+
+# Common JD wording mapped to the same technology question bank.
+KEYWORD_ALIASES={'postgresql':'sql','postgres':'sql','mysql':'sql','ms sql':'sql','mssql':'sql','sql server':'sql','numpy':'python','flask':'python','fast api':'fastapi','powerbi':'power bi','ml':'machine learning','ci/cd':'git','cicd':'git','restful api':'rest api','k8s':'kubernetes'}
+
+RESPONSIBILITY_PATTERNS=[
+    (r'build|develop|implement|create', 'How would you approach implementing the main functionality described in this job?'),
+    (r'debug|troubleshoot|resolve|production issue', 'How would you troubleshoot a production issue in this role?'),
+    (r'optimi[sz]|performance|scal(e|ability)', 'How would you identify and improve a performance bottleneck in this role?'),
+    (r'deploy|deployment|release|ci/cd', 'How would you safely deploy and release a change for this role?'),
+    (r'data|report|dashboard|analytics|insight', 'How would you turn the data or reports in this role into an actionable business insight?'),
+    (r'collaborat|cross-functional|stakeholder|client', 'How would you handle a technical requirement that is unclear or changes after stakeholder feedback?')]
 
 def role_key(role):
     r=re.sub(r'\s+',' ',(role or '').lower()).strip()
@@ -73,11 +106,42 @@ def role_key(role):
     if 'python' in r:return 'python developer'
     return 'software engineer'
 
-def jd_questions(job_description):
-    text=(job_description or '').lower(); found=[]
-    for keyword,questions in KEYWORD_QUESTIONS.items():
-        if re.search(r'(?<!\w)'+re.escape(keyword)+r'(?!\w)',text): found.extend(questions)
+def normalize_jd(text):
+    t=re.sub(r'\s+',' ',(text or '').lower())
+    for alias,canonical in KEYWORD_ALIASES.items():
+        t=t.replace(alias,canonical)
+    return t
+
+def jd_keywords(job_description):
+    text=normalize_jd(job_description); found=[]
+    for keyword in KEYWORD_QUESTIONS:
+        if re.search(r'(?<!\w)'+re.escape(keyword)+r'(?!\w)',text): found.append(keyword)
     return found
+
+def jd_questions(job_description):
+    text=normalize_jd(job_description); found=[]
+    keywords=jd_keywords(job_description)
+    for keyword in keywords:
+        found.extend(KEYWORD_QUESTIONS[keyword])
+    # Add questions that explicitly connect the two strongest technologies in the JD.
+    if len(keywords)>=2:
+        a,b=keywords[0],keywords[1]
+        found.append(f'How would you use {a} and {b} together in a project for this role?')
+    # Turn responsibility language into interview prompts, without pretending these are reported questions.
+    for pattern,question in RESPONSIBILITY_PATTERNS:
+        if re.search(pattern,text) and question not in found: found.append(question)
+    return found
+
+def targeted_questions(role,job_description):
+    canonical=role_key(role); base=SEED.get(canonical,SEED['software engineer'])
+    extra=jd_questions(job_description)
+    result=[]; seen=set()
+    # Put JD-specific questions first so the most relevant questions survive the 12-question cap.
+    for q in extra+base:
+        key=q.lower().strip()
+        if key not in seen:
+            seen.add(key); result.append(q)
+    return result[:12]
 
 @app.get('/health')
 def health(): return {'status':'ok','database':'supabase' if persistent_enabled() else 'sqlite-mvp'}
@@ -85,12 +149,12 @@ def health(): return {'status':'ok','database':'supabase' if persistent_enabled(
 @app.post('/prep')
 def prep(req:PrepRequest,request:Request):
     rate_limit(request,'prep',30,300)
-    role=req.role.strip() or 'Software Engineer'; canonical=role_key(role); questions=[]; seen=set()
-    for q in SEED.get(canonical,SEED['software engineer'])+jd_questions(req.job_description):
-        key=q.lower().strip()
-        if key not in seen: seen.add(key); questions.append(q)
-    seed_questions(canonical,questions[:12]); rows=question_rows(canonical)
-    return {'role':role,'questions':rows,'evidence_note':'Role and JD questions are recommendations unless a question has candidate confirmations.','database':'persistent' if persistent_enabled() else 'mvp'}
+    role=req.role.strip() or 'Software Engineer'; canonical=role_key(role)
+    questions=targeted_questions(role,req.job_description)
+    seed_questions(canonical,questions)
+    rows=question_rows(canonical)
+    technologies=jd_keywords(req.job_description)
+    return {'role':role,'questions':rows,'jd_keywords':technologies,'evidence_note':'Role and JD questions are recommendations unless a question has candidate confirmations.','database':'persistent' if persistent_enabled() else 'mvp'}
 
 @app.post('/research')
 def research(req:ResearchRequest,request:Request):
