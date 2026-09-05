@@ -45,18 +45,14 @@ def sb_request(method,path,params=None,json_body=None,prefer='return=representat
 def question_rows(role):
     role=role_key(role)
     if persistent_enabled():
-        try:
-            return sb_request('GET','questions',params={'select':'id,question,confirmations','role':f'eq.{role}','order':'confirmations.desc,id.asc','limit':'50'}) or []
-        except requests.RequestException: pass
+        return sb_request('GET','questions',params={'select':'id,question,confirmations','role':f'eq.{role}','order':'confirmations.desc,id.asc','limit':'50'}) or []
     with sqlite_db() as c:
         return [dict(r) for r in c.execute('SELECT id,question,confirmations FROM questions WHERE role=? ORDER BY confirmations DESC,id ASC LIMIT 50',(role,)).fetchall()]
 
 def seed_questions(role,questions):
     role=role_key(role)
     if persistent_enabled():
-        try:
-            sb_request('POST','questions',params={'on_conflict':'role,question'},json_body=[{'role':role,'question':q} for q in questions],prefer='resolution=ignore-duplicates,return=minimal'); return
-        except requests.RequestException: pass
+        sb_request('POST','questions',params={'on_conflict':'role,question'},json_body=[{'role':role,'question':q} for q in questions],prefer='resolution=ignore-duplicates,return=minimal'); return
     with sqlite_db() as c:
         for q in questions: c.execute('INSERT OR IGNORE INTO questions(role,question) VALUES(?,?)',(role,q))
 
@@ -64,15 +60,34 @@ class PrepRequest(BaseModel): role:str; job_description:str=''
 class ConfirmRequest(BaseModel): question_id:int
 class ResearchRequest(BaseModel): role:str; company:str=''
 
-SEED={'data analyst':['Explain INNER JOIN vs LEFT JOIN with an example.','How would you find duplicate records in SQL?','Walk me through a data analysis project you worked on.','How do you handle missing or inconsistent data?','What metrics would you use to measure business performance?','Write a SQL query to find the second-highest salary.'],'python developer':['What is the difference between a list, tuple, set and dictionary?','Explain decorators in Python.','What are generators and when would you use them?','How would you design a REST API for a simple service?','Explain exception handling and custom exceptions.','How do you optimize slow Python code?'],'software engineer':['Explain the time complexity of your solution.','How would you detect a cycle in a linked list?','What is the difference between a process and a thread?','Explain indexing in databases.','What happens when you enter a URL in a browser?','Design a URL shortener at a high level.']}
+SEED={
+'data analyst':['Explain INNER JOIN vs LEFT JOIN with an example.','How would you find duplicate records in SQL?','Walk me through a data analysis project you worked on.','How do you handle missing or inconsistent data?','What metrics would you use to measure business performance?','Write a SQL query to find the second-highest salary.'],
+'python developer':['What is the difference between a list, tuple, set and dictionary?','Explain decorators in Python.','What are generators and when would you use them?','How would you design a REST API for a simple service?','Explain exception handling and custom exceptions.','How do you optimize slow Python code?'],
+'software engineer':['Explain the time complexity of your solution.','How would you detect a cycle in a linked list?','What is the difference between a process and a thread?','Explain indexing in databases.','What happens when you enter a URL in a browser?','Design a URL shortener at a high level.'],
+'frontend developer':['How does the browser render a web page?','What is the difference between var, let and const?','How would you improve frontend performance?','How do you manage state in a frontend application?','How do you make a web application accessible?','How would you test a frontend component?'],
+'backend developer':['How would you design a REST API for a production service?','How do you handle authentication and authorization?','How would you optimize a slow database-backed endpoint?','How do you design for retries and idempotency?','How would you monitor a backend service in production?','How would you handle a sudden increase in traffic?'],
+'full stack developer':['How would you design a full-stack feature from UI to database?','How do you secure data between the frontend and backend?','How would you debug a slow end-to-end request?','How do you structure APIs consumed by a frontend?','How do you test a full-stack application?','How would you deploy a full-stack application?'],
+'data scientist':['How would you approach a new machine learning problem?','How do you select features for a model?','How would you evaluate a classification model?','How do you handle missing or imbalanced data?','How do you detect and prevent overfitting?','How would you explain a model result to a business stakeholder?'],
+'devops engineer':['How would you design a CI/CD pipeline?','How would you containerize and deploy an application?','How do you monitor and troubleshoot a production service?','What strategies would you use for safe deployments?','How would you manage infrastructure as code?','How would you respond to a production outage?'],
+'qa engineer':['How would you design test cases for a new feature?','What is the difference between unit, integration and end-to-end testing?','How would you investigate a flaky test?','How do you decide what to automate?','How would you test an API?','How would you report and prioritize a defect?']}
 KEYWORD_QUESTIONS={'sql':['How would you use window functions to solve an analytical problem?','How would you optimize a slow SQL query?'],'python':['How do you test and debug Python code?','How would you improve the performance of a Python program?'],'pandas':['How would you use Pandas to clean and transform a dataset?','How do you handle missing values in Pandas?'],'power bi':['How would you design a Power BI dashboard for business stakeholders?','What is the difference between a measure and a calculated column in Power BI?'],'tableau':['How would you build an effective Tableau dashboard?','What is a Tableau calculated field and when would you use it?'],'excel':['How would you use PivotTables and lookup functions to analyze data?'],'statistics':['Which statistical methods would you use to compare two groups?','How would you explain statistical significance to a non-technical stakeholder?'],'machine learning':['How would you evaluate a machine learning model?','How would you handle overfitting in a machine learning model?'],'rest api':['How would you design and secure a REST API?'],'fastapi':['How would you structure a FastAPI application for production?'],'django':['How would you structure a Django application and its models?'],'aws':['How would you deploy and monitor an application on AWS?'],'azure':['How would you deploy and monitor an application on Azure?'],'docker':['Why would you use Docker and how would you containerize an application?'],'kubernetes':['What problem does Kubernetes solve and how would you deploy an application with it?'],'git':['How do you use Git to manage changes and resolve merge conflicts?'],'javascript':['What is the difference between var, let and const in JavaScript?'],'react':['How does React manage component state and rendering?'],'java':['What is the difference between an interface and an abstract class in Java?'],'c++':['What is the difference between a pointer and a reference in C++?'],'c#':['What is the difference between an interface and an abstract class in C#?']}
 KEYWORD_ALIASES={'postgresql':'sql','postgres':'sql','mysql':'sql','ms sql':'sql','mssql':'sql','sql server':'sql','numpy':'python','flask':'python','fast api':'fastapi','powerbi':'power bi','ml':'machine learning','ci/cd':'git','cicd':'git','restful api':'rest api','k8s':'kubernetes'}
 RESPONSIBILITY_PATTERNS=[(r'build|develop|implement|create','How would you approach implementing the main functionality described in this job?'),(r'debug|troubleshoot|resolve|production issue','How would you troubleshoot a production issue in this role?'),(r'optimi[sz]|performance|scal(e|ability)','How would you identify and improve a performance bottleneck in this role?'),(r'deploy|deployment|release|ci/cd','How would you safely deploy and release a change for this role?'),(r'data|report|dashboard|analytics|insight','How would you turn the data or reports in this role into an actionable business insight?'),(r'collaborat|cross-functional|stakeholder|client','How would you handle a technical requirement that is unclear or changes after stakeholder feedback?')]
+ROLE_ALIASES={'frontend':'frontend developer','front end':'frontend developer','ui developer':'frontend developer','backend':'backend developer','back end':'backend developer','fullstack':'full stack developer','full stack':'full stack developer','data science':'data scientist','machine learning engineer':'data scientist','ml engineer':'data scientist','devops':'devops engineer','sre':'devops engineer','qa':'qa engineer','quality assurance':'qa engineer'}
 
 def role_key(role):
     r=re.sub(r'\s+',' ',(role or '').lower()).strip()
+    for alias,canonical in ROLE_ALIASES.items():
+        if alias in r:return canonical
     if 'analyst' in r:return 'data analyst'
     if 'python' in r:return 'python developer'
+    if 'data scientist' in r or 'data science' in r:return 'data scientist'
+    if 'machine learning' in r:return 'data scientist'
+    if 'devops' in r:return 'devops engineer'
+    if 'qa' in r or 'quality assurance' in r or 'tester' in r:return 'qa engineer'
+    if 'full stack' in r or 'fullstack' in r:return 'full stack developer'
+    if 'frontend' in r or 'front end' in r or 'ui developer' in r:return 'frontend developer'
+    if 'backend' in r or 'back end' in r:return 'backend developer'
     return 'software engineer'
 
 def normalize_jd(text):
@@ -113,14 +128,20 @@ def order_prep_rows(targets,rows):
     return ordered
 
 @app.get('/health')
-def health(): return {'status':'ok','database':'supabase' if persistent_enabled() else 'sqlite-mvp'}
+def health():
+    if not persistent_enabled(): return {'status':'ok','database':'sqlite-mvp'}
+    try:
+        sb_request('GET','questions',params={'select':'id','limit':'1'},prefer='return=minimal')
+        return {'status':'ok','database':'supabase'}
+    except requests.RequestException:
+        raise HTTPException(503,'Supabase is configured but unavailable')
 
 @app.post('/prep')
 def prep(req:PrepRequest,request:Request):
     rate_limit(request,'prep',30,300)
     role=req.role.strip() or 'Software Engineer'; canonical=role_key(role); targets=targeted_questions(role,req.job_description)
     seed_questions(canonical,targets); rows=question_rows(canonical)
-    return {'role':role,'questions':order_prep_rows(targets,rows),'jd_keywords':jd_keywords(req.job_description),'evidence_note':'Role and JD questions are recommendations unless a question has candidate confirmations.','database':'persistent' if persistent_enabled() else 'mvp'}
+    return {'role':role,'questions':order_prep_rows(targets,rows),'jd_keywords':jd_keywords(req.job_description),'role_key':canonical,'evidence_note':'Role and JD questions are recommendations unless a question has candidate confirmations.','database':'persistent' if persistent_enabled() else 'mvp'}
 
 @app.post('/research')
 def research(req:ResearchRequest,request:Request):
@@ -140,6 +161,7 @@ def confirm(req:ConfirmRequest,request:Request):
             return {'question_id':req.question_id,'confirmations':int(count),'persistent':True}
         except requests.RequestException as exc:
             if getattr(exc.response,'status_code',None)==404: raise HTTPException(404,'Question not found')
+            raise HTTPException(503,'Community database is temporarily unavailable')
     with sqlite_db() as c:
         if not c.execute('SELECT id FROM questions WHERE id=?',(req.question_id,)).fetchone(): raise HTTPException(404,'Question not found')
         inserted=c.execute('INSERT OR IGNORE INTO confirmations(question_id,fingerprint,created_at) VALUES(?,?,?)',(req.question_id,fingerprint,datetime.utcnow().isoformat())).rowcount
