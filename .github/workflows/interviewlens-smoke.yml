@@ -84,12 +84,22 @@ jobs:
           print('Existing reported questions:', len(d['items']))
           PY
 
-      - name: Check mock interview asset
+      - name: Check mock AI endpoint and asset
         shell: bash
         run: |
+          curl -fsS https://interviewlens-api.vercel.app/mock/health > mock-health.json
+          python - <<'PY'
+          import json
+          d=json.load(open('mock-health.json'))
+          assert d.get('status') == 'ok', d
+          assert d.get('provider') == 'gemini', d
+          print('Mock AI endpoint: PASS')
+          print('Gemini configured:', d.get('configured'))
+          PY
           curl -fsS https://karanaldo-07.github.io/web/mock.js > mock.js
           grep -q 'AI Mock Interview' mock.js
-          grep -q 'scoreAnswer' mock.js
+          grep -q '/mock/evaluate' mock.js
+          grep -q 'source.*gemini' mock.js
           echo 'Mock interview asset: PASS'
 
       - name: Check live GitHub Pages site
