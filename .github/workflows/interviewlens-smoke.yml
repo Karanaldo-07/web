@@ -84,11 +84,20 @@ jobs:
           print('Existing reported questions:', len(d['items']))
           PY
 
+      - name: Check mock interview asset
+        shell: bash
+        run: |
+          curl -fsS https://karanaldo-07.github.io/web/mock.js > mock.js
+          grep -q 'AI Mock Interview' mock.js
+          grep -q 'scoreAnswer' mock.js
+          echo 'Mock interview asset: PASS'
+
       - name: Check live GitHub Pages site
         shell: bash
         run: |
           curl -fsS https://karanaldo-07.github.io/web/ > site.html
           grep -q 'InterviewLens' site.html
           grep -q 'app.js' site.html
+          grep -q 'mock.js' site.html
           grep -q 'Candidate interview experiences' site.html
           echo 'GitHub Pages: PASS'
