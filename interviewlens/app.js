@@ -1,6 +1,9 @@
 const $=id=>document.getElementById(id);
 const role=$('role'),jd=$('jd'),company=$('company'),results=$('results');
 const API=window.INTERVIEWLENS_API||'';
+let currentRole='Software Engineer';
+let currentQuestions=[];
+let reportQuestion=null;
 
 const packs={
   'data analyst':{topics:['SQL: joins, GROUP BY, window functions','Excel: lookups, pivots, cleaning','Python/Pandas basics','Statistics and probability','Power BI/Tableau and dashboard design'],behavioral:['Tell me about yourself.','Describe a project where you used data to solve a problem.','Tell me about a time your analysis changed a decision.','How do you handle ambiguous requirements?'],checklist:['Research the company and its product','Review every technology named in the JD','Prepare 2 project stories with measurable results','Practice SQL hands-on problems','Prepare 3 questions for the interviewer']},
@@ -57,27 +60,69 @@ function renderResearch(data){
 
 function renderTopics(pack,jdKeywords){
   const topics=[...pack.topics];
-  if(jdKeywords.length){
-    topics.unshift(`JD focus: ${jdKeywords.map(x=>x.replace(/\b\w/g,c=>c.toUpperCase())).join(' · ')}`);
-  } else {
-    topics.unshift('JD focus: add a job description for more targeted revision');
-  }
+  topics.unshift(jdKeywords.length?`JD focus: ${jdKeywords.map(x=>x.replace(/\b\w/g,c=>c.toUpperCase())).join(' · ')}`:'JD focus: add a job description for more targeted revision');
   renderList('topics',topics);
+}
+
+async function loadExperiences(r,c){
+  const box=$('experienceList');
+  if(!API){box.innerHTML='<div class="research-empty">Community reports require the live API.</div>';return}
+  try{
+    const res=await fetch(API+'/experiences/'+encodeURIComponent(r)+`?company=${encodeURIComponent(c)}`);
+    if(!res.ok)throw new Error('experience request failed');
+    const data=await res.json();
+    const items=data.items||[];
+    if(!items.length){box.innerHTML='<div class="research-empty">No candidate-reported experiences yet. Be the first to add context to a question.</div>';return}
+    box.innerHTML=items.map((x,i)=>{
+      const contexts=(x.contexts||[]).map(ctx=>`<span class="experience-chip">${escapeHtml(ctx.company||'Company not specified')} · ${escapeHtml(ctx.round)} · ${escapeHtml(ctx.difficulty)}</span>`).join('');
+      return `<div class="experience-item"><div><strong>${String(i+1).padStart(2,'0')} · ${escapeHtml(x.question)}</strong><span class="report-count">${x.reports} report${x.reports===1?'':'s'}</span></div><div class="experience-context">${contexts}</div></div>`;
+    }).join('');
+  }catch(e){box.innerHTML='<div class="research-empty">Could not load community experiences right now.</div>'}
+}
+
+function openReport(item){
+  reportQuestion=item;
+  $('reportQuestion').textContent=item.q;
+  $('reportCompany').value=company.value.trim();
+  $('reportRound').value='Technical';
+  $('reportDifficulty').value='Medium';
+  $('reportStatus').textContent='';
+  $('reportModal').classList.remove('hidden');
+}
+function closeReport(){reportQuestion=null;$('reportModal').classList.add('hidden')}
+
+async function submitReport(){
+  if(!reportQuestion||!API)return;
+  const status=$('reportStatus');status.textContent='Saving…';
+  try{
+    const res=await fetch(API+'/experiences',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question_id:reportQuestion.id,role:currentRole,company:$('reportCompany').value.trim(),interview_round:$('reportRound').value,difficulty:$('reportDifficulty').value})});
+    const data=await res.json();
+    if(!res.ok)throw new Error(data.detail||'Could not save report');
+    status.textContent=data.duplicate?'You already reported this question from this browser.':'Saved — thank you for improving the community signal.';
+    if(!data.duplicate){
+      const button=document.querySelector(`.report[data-id="${reportQuestion.id}"]`);if(button){button.classList.add('reported');button.textContent='✓ Experience added'}
+      await loadExperiences(currentRole,company.value.trim());
+    }
+    setTimeout(closeReport,900);
+  }catch(e){status.textContent=e.message||'Could not save report.'}
 }
 
 async function generate(){
   const r=(role.value||'Software Engineer').trim();
   const c=(company?.value||'').trim();
   const jdText=jd.value.trim();
+  currentRole=r;
   $('resultTitle').textContent=r;
   $('resultSub').textContent=jdText?(c?`Customized from your job description, role patterns, and ${c} web research.`:'Customized from your job description + role patterns.'):(c?`Role-based preparation with ${c} web research.`:'Role-based preparation pack.');
   let data=null;
   if(API){try{const res=await fetch(API+'/prep',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role:r,job_description:jdText})});if(res.ok)data=await res.json()}catch(e){console.warn('InterviewLens API unavailable; using local pack.')}}
   const p=choosePack(r+' '+jdText);
   const jdKeywords=data?.jd_keywords||[];
-  renderQuestions((data&&data.questions?.length)?data.questions.map(x=>({id:x.id,q:x.question,count:x.confirmations})):[] ,jdKeywords,p.questions||[]);
+  currentQuestions=(data&&data.questions?.length)?data.questions.map(x=>({id:x.id,q:x.question,count:x.confirmations})):p.questions||[];
+  renderQuestions(currentQuestions,jdKeywords);
   renderTopics(p,jdKeywords);renderList('behavioral',p.behavioral);renderList('checklist',p.checklist);
   results.classList.remove('hidden');renderResearch(null);
+  loadExperiences(r,c);
   if(API){try{const res=await fetch(API+'/research',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role:r,company:c})});if(res.ok)renderResearch(await res.json());else renderResearch({enabled:false,message:'Research request failed.'})}catch(e){renderResearch({enabled:false,message:'Could not reach the research backend.'})}}
   results.scrollIntoView({behavior:'smooth'})
 }
@@ -89,30 +134,28 @@ async function confirm(id,q,button,items){
       const res=await fetch(API+'/confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question_id:id})});
       if(res.ok){
         const d=await res.json();
-        const countEl=button.parentElement.querySelector('small b');
-        if(countEl)countEl.textContent=d.confirmations;
+        const countEl=button.parentElement.querySelector('small b');if(countEl)countEl.textContent=d.confirmations;
         button.classList.add('confirmed');button.textContent='✓ Asked in an interview';button.dataset.confirmed='1';
         localStorage.setItem('confirmed:'+id,'1');
         const item=items.find(x=>x.id===id);if(item)item.count=d.confirmations;
-        updateSignal(items);
-        return
+        updateSignal(items);return
       }
     }catch(e){console.warn('Community confirmation failed; using local fallback.')}}
   const k='asked:'+q.toLowerCase().replace(/\W+/g,'-');
   if(localStorage.getItem(k))return;
   localStorage.setItem(k,'1');button.classList.add('confirmed');button.textContent='✓ Asked in an interview';button.dataset.confirmed='1';
-  const countEl=button.parentElement.querySelector('small b');if(countEl)countEl.textContent='1';
-  updateSignal(items)
+  const countEl=button.parentElement.querySelector('small b');if(countEl)countEl.textContent='1';updateSignal(items)
 }
 
-function renderQuestions(items,jdKeywords=[],fallbackQuestions=[]){
-  const displayItems=items.length?items:fallbackQuestions.map(q=>({q,count:0}));
+function renderQuestions(items,jdKeywords=[]){
+  const displayItems=items.length?items:[];
   $('questions').innerHTML=displayItems.map((x,i)=>{
-    const q=x.q||x,n=Number(x.count)||0,already=x.id&&localStorage.getItem('confirmed:'+x.id);
-    return `<div class="q"><div class="q-head"><span class="q-num">${String(i+1).padStart(2,'0')}</span><p>${escapeHtml(q)}</p></div><small>${x.id?'Community reports':'Recommended for this role/JD'} · Confirmations: <b>${n}</b></small><details class="answer"><summary>How should I answer?</summary><p>${escapeHtml(answerGuide(q,jdKeywords))}</p></details><button class="asked ${already?'confirmed':''}" data-id="${x.id||''}" data-confirmed="${already?'1':'0'}">${already?'✓ Asked in an interview':'I was asked this'}</button></div>`
+    const q=x.q||x,n=Number(x.count)||0,already=x.id&&localStorage.getItem('confirmed:'+x.id),reported=x.id&&localStorage.getItem('reported:'+x.id);
+    return `<div class="q"><div class="q-head"><span class="q-num">${String(i+1).padStart(2,'0')}</span><p>${escapeHtml(q)}</p></div><small>${x.id?'Community reports':'Recommended for this role/JD'} · Confirmations: <b>${n}</b></small><details class="answer"><summary>How should I answer?</summary><p>${escapeHtml(answerGuide(q,jdKeywords))}</p></details><div class="q-actions"><button class="asked ${already?'confirmed':''}" data-id="${x.id||''}" data-confirmed="${already?'1':'0'}">${already?'✓ Asked in an interview':'I was asked this'}</button>${x.id?`<button class="report ${reported?'reported':''}" data-id="${x.id}">${reported?'✓ Experience added':'Add interview context'}</button>`:''}</div></div>`
   }).join('');
   const buttons=[...document.querySelectorAll('.asked')];
   buttons.forEach((b,i)=>{const item=displayItems[i],q=item.q||item;b.onclick=()=>confirm(item.id,q,b,displayItems)});
+  document.querySelectorAll('.report').forEach((b,i)=>b.onclick=()=>openReport(displayItems.find(x=>String(x.id)===String(b.dataset.id))));
   updateSignal(displayItems)
 }
 
@@ -121,11 +164,14 @@ function updateSignal(items=[]){
   const localTotal=new Set([...Object.keys(localStorage).filter(k=>k.startsWith('asked:')), ...Object.keys(localStorage).filter(k=>k.startsWith('confirmed:'))]).size;
   $('signalNumber').textContent=communityTotal;
   $('confidence').textContent=communityTotal?`${communityTotal} candidate confirmation${communityTotal===1?'':'s'} across these questions`:'Community confidence: building';
-  const localLabel=$('confidence');
-  if(localLabel&&localTotal&&communityTotal===0)localLabel.textContent='Your confirmation is recorded locally while this pack builds community evidence';
+  const localLabel=$('confidence');if(localLabel&&localTotal&&communityTotal===0)localLabel.textContent='Your confirmation is recorded locally while this pack builds community evidence';
 }
 
 $('generate').onclick=generate;
 $('reset').onclick=()=>{results.classList.add('hidden');role.focus();window.scrollTo({top:0,behavior:'smooth'})};
+$('closeReport').onclick=closeReport;
+$('cancelReport').onclick=closeReport;
+$('submitReport').onclick=submitReport;
+$('reportModal').addEventListener('click',e=>{if(e.target.id==='reportModal')closeReport()});
 document.querySelectorAll('.examples button').forEach(b=>b.onclick=()=>{role.value=b.dataset.role;role.focus()});
 updateSignal();
