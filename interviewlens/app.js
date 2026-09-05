@@ -2,7 +2,6 @@ const $=id=>document.getElementById(id);
 const role=$('role'),jd=$('jd'),company=$('company'),results=$('results');
 const API=window.INTERVIEWLENS_API||'';
 let currentRole='Software Engineer';
-let currentQuestions=[];
 let reportQuestion=null;
 
 const packs={
@@ -16,162 +15,32 @@ const packs={
   'qa engineer':{topics:['Test strategy and test cases','Unit, integration and end-to-end testing','API testing','Automation frameworks','Defect investigation','CI/CD and regression testing'],behavioral:['Tell me about yourself.','Describe a difficult defect you found.','How do you decide what to automate?','Tell me about a disagreement over defect priority.'],checklist:['Review testing terminology','Practice writing test cases','Prepare an API testing example','Know your automation framework','Research the company release process']},
   'software engineer':{topics:['DSA: arrays, strings, hash maps, trees','OOP and design principles','DBMS and SQL','Operating systems basics','Networking and HTTP','System design fundamentals','Git and testing'],behavioral:['Tell me about yourself.','Describe your most impactful project.','Tell me about a bug that was difficult to solve.','Why do you want to work here?'],checklist:['Practice 5–10 coding problems','Know your resume projects deeply','Revise SQL and OOP','Review the company product and tech stack','Prepare thoughtful interviewer questions']}
 };
+const localQuestions={
+  'data analyst':['Explain INNER JOIN vs LEFT JOIN with an example.','How would you find duplicate records in SQL?','Walk me through a data analysis project you worked on.','How do you handle missing or inconsistent data?','What metrics would you use to measure business performance?','Write a SQL query to find the second-highest salary.'],
+  'python developer':['What is the difference between a list, tuple, set and dictionary?','Explain decorators in Python.','What are generators and when would you use them?','How would you design a REST API for a simple service?','Explain exception handling and custom exceptions.','How do you optimize slow Python code?'],
+  'frontend developer':['How does the browser render a web page?','What is the difference between var, let and const?','How would you improve frontend performance?','How do you manage state in a frontend application?','How do you make a web application accessible?','How would you test a frontend component?'],
+  'backend developer':['How would you design a REST API for a production service?','How do you handle authentication and authorization?','How would you optimize a slow database-backed endpoint?','How do you design for retries and idempotency?','How would you monitor a backend service in production?','How would you handle a sudden increase in traffic?'],
+  'full stack developer':['How would you design a full-stack feature from UI to database?','How do you secure data between the frontend and backend?','How would you debug a slow end-to-end request?','How do you structure APIs consumed by a frontend?','How do you test a full-stack application?','How would you deploy a full-stack application?'],
+  'data scientist':['How would you approach a new machine learning problem?','How do you select features for a model?','How would you evaluate a classification model?','How do you handle missing or imbalanced data?','How do you detect and prevent overfitting?','How would you explain a model result to a business stakeholder?'],
+  'devops engineer':['How would you design a CI/CD pipeline?','How would you containerize and deploy an application?','How do you monitor and troubleshoot a production service?','What strategies would you use for safe deployments?','How would you manage infrastructure as code?','How would you respond to a production outage?'],
+  'qa engineer':['How would you design test cases for a new feature?','What is the difference between unit, integration and end-to-end testing?','How would you investigate a flaky test?','How do you decide what to automate?','How would you test an API?','How would you report and prioritize a defect?'],
+  'software engineer':['Explain the time complexity of your solution.','How would you detect a cycle in a linked list?','What is the difference between a process and a thread?','Explain indexing in databases.','What happens when you enter a URL in a browser?','Design a URL shortener at a high level.']
+};
 
-function choosePack(text){
-  const t=text.toLowerCase();
-  if(t.includes('data analyst')||t.includes('business analyst')||t.includes('analyst'))return packs['data analyst'];
-  if(t.includes('data scientist')||t.includes('machine learning')||t.includes('ml engineer'))return packs['data scientist'];
-  if(t.includes('devops')||t.includes('site reliability')||t.includes('sre'))return packs['devops engineer'];
-  if(t.includes('qa')||t.includes('quality assurance')||t.includes('tester'))return packs['qa engineer'];
-  if(t.includes('full stack')||t.includes('fullstack'))return packs['full stack developer'];
-  if(t.includes('frontend')||t.includes('front end')||t.includes('ui developer'))return packs['frontend developer'];
-  if(t.includes('backend')||t.includes('back end'))return packs['backend developer'];
-  if(t.includes('python'))return packs['python developer'];
-  return packs['software engineer']
-}
+function choosePack(text){const t=text.toLowerCase();if(t.includes('data analyst')||t.includes('business analyst')||t.includes('analyst'))return packs['data analyst'];if(t.includes('data scientist')||t.includes('machine learning')||t.includes('ml engineer'))return packs['data scientist'];if(t.includes('devops')||t.includes('site reliability')||t.includes('sre'))return packs['devops engineer'];if(t.includes('qa')||t.includes('quality assurance')||t.includes('tester'))return packs['qa engineer'];if(t.includes('full stack')||t.includes('fullstack'))return packs['full stack developer'];if(t.includes('frontend')||t.includes('front end')||t.includes('ui developer'))return packs['frontend developer'];if(t.includes('backend')||t.includes('back end'))return packs['backend developer'];if(t.includes('python'))return packs['python developer'];return packs['software engineer']}
+function canonicalRole(text){const t=text.toLowerCase();if(t.includes('data analyst')||t.includes('business analyst')||t.includes('analyst'))return 'data analyst';if(t.includes('data scientist')||t.includes('machine learning')||t.includes('ml engineer'))return 'data scientist';if(t.includes('devops')||t.includes('site reliability')||t.includes('sre'))return 'devops engineer';if(t.includes('qa')||t.includes('quality assurance')||t.includes('tester'))return 'qa engineer';if(t.includes('full stack')||t.includes('fullstack'))return 'full stack developer';if(t.includes('frontend')||t.includes('front end')||t.includes('ui developer'))return 'frontend developer';if(t.includes('backend')||t.includes('back end'))return 'backend developer';if(t.includes('python'))return 'python developer';return 'software engineer'}
 function renderList(id,items){$(id).innerHTML=items.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-
-function answerGuide(q,jdKeywords=[]){
-  const t=q.toLowerCase(), context=jdKeywords.length?` Tie your answer directly to the JD focus: ${jdKeywords.join(', ')}.`:'';
-  if(t.includes('sql')||t.includes('join')||t.includes('query')||t.includes('database'))return 'Start with the concept, then write or describe a small query/example. Explain edge cases, performance, and why your approach fits the data.'+context;
-  if(t.includes('python')||t.includes('decorator')||t.includes('generator'))return 'Define the Python concept, show a compact example, explain when you would use it, and mention a practical trade-off such as readability, memory, or performance.'+context;
-  if(t.includes('pandas'))return 'Explain the transformation step by step, name the Pandas operations you would use, and discuss missing values, data types, validation, and performance on larger datasets.'+context;
-  if(t.includes('power bi')||t.includes('tableau')||t.includes('dashboard'))return 'Start from the stakeholder question, explain the data/model, choose a few useful metrics and visuals, and describe how you would validate that the dashboard leads to the right decision.'+context;
-  if(t.includes('machine learning')||t.includes('model')||t.includes('overfitting'))return 'Frame the business problem first, explain the baseline and evaluation metric, describe validation and leakage risks, then discuss model choice, errors, and how you would improve it.'+context;
-  if(t.includes('api')||t.includes('rest')||t.includes('fastapi')||t.includes('django'))return 'Cover the endpoint contract, validation, authentication/authorization, error handling, database interaction, testing, and observability. Explain the trade-offs behind your design.'+context;
-  if(t.includes('docker')||t.includes('kubernetes')||t.includes('deploy')||t.includes('deployment')||t.includes('ci/cd'))return 'Explain the deployment path from code to production, configuration/secrets, health checks, rollback strategy, monitoring, and how you would minimize deployment risk.'+context;
-  if(t.includes('react')||t.includes('javascript')||t.includes('frontend')||t.includes('browser'))return 'Explain the browser or component behavior first, then walk through your implementation, state/data flow, accessibility and performance considerations, and how you would test it.'+context;
-  if(t.includes('time complexity')||t.includes('cycle')||t.includes('algorithm'))return 'State the approach first, walk through the key steps, then give time and space complexity and test an edge case. Mention why you chose this approach over alternatives.'+context;
-  if(t.includes('project')||t.includes('tell me')||t.includes('why do you'))return 'Use STAR: Situation, Task, Action, Result. Keep the story specific, explain your individual contribution, and include measurable impact where possible.'+context;
-  if(t.includes('design')||t.includes('system')||t.includes('scale'))return 'Clarify requirements, propose a simple architecture, explain data flow and trade-offs, then cover scale, reliability, security, observability, and failure cases.'+context;
-  return 'Start with a concise definition or approach, give a concrete example from your work or study, explain your reasoning and trade-offs, and finish with how you would validate the result.'+context
-}
-
-function renderResearch(data){
-  const status=$('researchStatus'),leads=$('researchLeads'),sources=$('sources');
-  if(!API){status.textContent='Connect API to enable';leads.innerHTML='<div class="research-empty">Live web research will appear here after the backend is deployed and connected.</div>';sources.innerHTML='';return}
-  if(!data||!data.enabled){status.textContent='Waiting for API key';leads.innerHTML=`<div class="research-empty">${escapeHtml(data?.message||'Web research is not available yet.')}</div>`;sources.innerHTML='';return}
-  status.textContent=`${data.sources?.length||0} sources found`;
-  const ql=data.question_leads||[];
-  leads.innerHTML=ql.length?ql.map(x=>`<div class="lead-item"><p>${escapeHtml(x.question)}</p><small>Research lead · <a href="${escapeHtml(x.source_url)}" target="_blank" rel="noopener noreferrer">View source</a></small></div>`).join(''):'<div class="research-empty">No clean question leads were extracted. Check the sources below for interview reports.</div>';
-  sources.innerHTML=(data.sources||[]).slice(0,10).map(x=>`<div class="source"><a href="${escapeHtml(x.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(x.title||x.url)}</a><small>${escapeHtml(x.snippet||'')}</small></div>`).join('')
-}
-
-function renderTopics(pack,jdKeywords){
-  const topics=[...pack.topics];
-  topics.unshift(jdKeywords.length?`JD focus: ${jdKeywords.map(x=>x.replace(/\b\w/g,c=>c.toUpperCase())).join(' · ')}`:'JD focus: add a job description for more targeted revision');
-  renderList('topics',topics);
-}
-
-async function loadExperiences(r,c){
-  const box=$('experienceList');
-  if(!API){box.innerHTML='<div class="research-empty">Community reports require the live API.</div>';return}
-  try{
-    const res=await fetch(API+'/experiences/'+encodeURIComponent(r)+`?company=${encodeURIComponent(c)}`);
-    if(!res.ok)throw new Error('experience request failed');
-    const data=await res.json();
-    const items=data.items||[];
-    if(!items.length){box.innerHTML='<div class="research-empty">No candidate-reported experiences yet. Be the first to add context to a question.</div>';return}
-    box.innerHTML=items.map((x,i)=>{
-      const contexts=(x.contexts||[]).map(ctx=>`<span class="experience-chip">${escapeHtml(ctx.company||'Company not specified')} · ${escapeHtml(ctx.round)} · ${escapeHtml(ctx.difficulty)}</span>`).join('');
-      return `<div class="experience-item"><div><strong>${String(i+1).padStart(2,'0')} · ${escapeHtml(x.question)}</strong><span class="report-count">${x.reports} report${x.reports===1?'':'s'}</span></div><div class="experience-context">${contexts}</div></div>`;
-    }).join('');
-  }catch(e){box.innerHTML='<div class="research-empty">Could not load community experiences right now.</div>'}
-}
-
-function openReport(item){
-  reportQuestion=item;
-  $('reportQuestion').textContent=item.q;
-  $('reportCompany').value=company.value.trim();
-  $('reportRound').value='Technical';
-  $('reportDifficulty').value='Medium';
-  $('reportStatus').textContent='';
-  $('reportModal').classList.remove('hidden');
-}
+function answerGuide(q,jdKeywords=[]){const t=q.toLowerCase(),context=jdKeywords.length?` Tie your answer directly to the JD focus: ${jdKeywords.join(', ')}.`:'';if(t.includes('sql')||t.includes('join')||t.includes('query')||t.includes('database'))return 'Start with the concept, then write or describe a small query/example. Explain edge cases, performance, and why your approach fits the data.'+context;if(t.includes('python')||t.includes('decorator')||t.includes('generator'))return 'Define the Python concept, show a compact example, explain when you would use it, and mention a practical trade-off such as readability, memory, or performance.'+context;if(t.includes('pandas'))return 'Explain the transformation step by step, name the Pandas operations you would use, and discuss missing values, data types, validation, and performance on larger datasets.'+context;if(t.includes('power bi')||t.includes('tableau')||t.includes('dashboard'))return 'Start from the stakeholder question, explain the data/model, choose a few useful metrics and visuals, and describe how you would validate that the dashboard leads to the right decision.'+context;if(t.includes('machine learning')||t.includes('model')||t.includes('overfitting'))return 'Frame the business problem first, explain the baseline and evaluation metric, describe validation and leakage risks, then discuss model choice, errors, and how you would improve it.'+context;if(t.includes('api')||t.includes('rest')||t.includes('fastapi')||t.includes('django'))return 'Cover the endpoint contract, validation, authentication/authorization, error handling, database interaction, testing, and observability. Explain the trade-offs behind your design.'+context;if(t.includes('docker')||t.includes('kubernetes')||t.includes('deploy')||t.includes('deployment')||t.includes('ci/cd'))return 'Explain the deployment path from code to production, configuration/secrets, health checks, rollback strategy, monitoring, and how you would minimize deployment risk.'+context;if(t.includes('react')||t.includes('javascript')||t.includes('frontend')||t.includes('browser'))return 'Explain the browser or component behavior first, then walk through your implementation, state/data flow, accessibility and performance considerations, and how you would test it.'+context;if(t.includes('time complexity')||t.includes('cycle')||t.includes('algorithm'))return 'State the approach first, walk through the key steps, then give time and space complexity and test an edge case. Mention why you chose this approach over alternatives.'+context;if(t.includes('project')||t.includes('tell me')||t.includes('why do you'))return 'Use STAR: Situation, Task, Action, Result. Keep the story specific, explain your individual contribution, and include measurable impact where possible.'+context;if(t.includes('design')||t.includes('system')||t.includes('scale'))return 'Clarify requirements, propose a simple architecture, explain data flow and trade-offs, then cover scale, reliability, security, observability, and failure cases.'+context;return 'Start with a concise definition or approach, give a concrete example from your work or study, explain your reasoning and trade-offs, and finish with how you would validate the result.'+context}
+function renderResearch(data){const status=$('researchStatus'),leads=$('researchLeads'),sources=$('sources');if(!API){status.textContent='Connect API to enable';leads.innerHTML='<div class="research-empty">Live web research will appear here after the backend is deployed and connected.</div>';sources.innerHTML='';return}if(!data||!data.enabled){status.textContent='Waiting for API key';leads.innerHTML=`<div class="research-empty">${escapeHtml(data?.message||'Web research is not available yet.')}</div>`;sources.innerHTML='';return}status.textContent=`${data.sources?.length||0} sources found`;const ql=data.question_leads||[];leads.innerHTML=ql.length?ql.map(x=>`<div class="lead-item"><p>${escapeHtml(x.question)}</p><small>Research lead · <a href="${escapeHtml(x.source_url)}" target="_blank" rel="noopener noreferrer">View source</a></small></div>`).join(''):'<div class="research-empty">No clean question leads were extracted. Check the sources below for interview reports.</div>';sources.innerHTML=(data.sources||[]).slice(0,10).map(x=>`<div class="source"><a href="${escapeHtml(x.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(x.title||x.url)}</a><small>${escapeHtml(x.snippet||'')}</small></div>`).join('')}
+function renderTopics(pack,jdKeywords){const topics=[...pack.topics];topics.unshift(jdKeywords.length?`JD focus: ${jdKeywords.map(x=>x.replace(/\b\w/g,c=>c.toUpperCase())).join(' · ')}`:'JD focus: add a job description for more targeted revision');renderList('topics',topics)}
+async function loadExperiences(r,c){const box=$('experienceList');if(!API){box.innerHTML='<div class="research-empty">Community reports require the live API.</div>';return}try{const res=await fetch(API+'/experiences/'+encodeURIComponent(r)+`?company=${encodeURIComponent(c)}`);if(!res.ok)throw new Error('experience request failed');const data=await res.json();const items=data.items||[];if(!items.length){box.innerHTML='<div class="research-empty">No candidate-reported experiences yet. Be the first to add context to a question.</div>';return}box.innerHTML=items.map((x,i)=>{const contexts=(x.contexts||[]).map(ctx=>`<span class="experience-chip">${escapeHtml(ctx.company||'Company not specified')} · ${escapeHtml(ctx.round)} · ${escapeHtml(ctx.difficulty)}</span>`).join('');return `<div class="experience-item"><div><strong>${String(i+1).padStart(2,'0')} · ${escapeHtml(x.question)}</strong><span class="report-count">${x.reports} report${x.reports===1?'':'s'}</span></div><div class="experience-context">${contexts}</div></div>`}).join('')}catch(e){box.innerHTML='<div class="research-empty">Could not load community experiences right now.</div>'}}
+function openReport(item){if(!item?.id)return;reportQuestion=item;$('reportQuestion').textContent=item.q;$('reportCompany').value=company.value.trim();$('reportRound').value='Technical';$('reportDifficulty').value='Medium';$('reportStatus').textContent='';$('reportModal').classList.remove('hidden')}
 function closeReport(){reportQuestion=null;$('reportModal').classList.add('hidden')}
+async function submitReport(){if(!reportQuestion||!API)return;const status=$('reportStatus');status.textContent='Saving…';try{const res=await fetch(API+'/experiences',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question_id:reportQuestion.id,role:currentRole,company:$('reportCompany').value.trim(),interview_round:$('reportRound').value,difficulty:$('reportDifficulty').value})});const data=await res.json();if(!res.ok)throw new Error(data.detail||'Could not save report');status.textContent=data.duplicate?'You already reported this question from this browser.':'Saved — thank you for improving the community signal.';if(!data.duplicate){localStorage.setItem('reported:'+reportQuestion.id,'1');const button=document.querySelector(`.report[data-id="${reportQuestion.id}"]`);if(button){button.classList.add('reported');button.textContent='✓ Experience added'}await loadExperiences(currentRole,company.value.trim())}setTimeout(closeReport,900)}catch(e){status.textContent=e.message||'Could not save report.'}}
+async function generate(){const r=(role.value||'Software Engineer').trim(),c=(company?.value||'').trim(),jdText=jd.value.trim();currentRole=r;$('resultTitle').textContent=r;$('resultSub').textContent=jdText?(c?`Customized from your job description, role patterns, and ${c} web research.`:'Customized from your job description + role patterns.'):(c?`Role-based preparation with ${c} web research.`:'Role-based preparation pack.');let data=null;if(API){try{const res=await fetch(API+'/prep',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role:r,job_description:jdText})});if(res.ok)data=await res.json()}catch(e){console.warn('InterviewLens API unavailable; using local pack.')}}const p=choosePack(r+' '+jdText),canonical=canonicalRole(r+' '+jdText),jdKeywords=data?.jd_keywords||[];const display=(data&&data.questions?.length)?data.questions.map(x=>({id:x.id,q:x.question,count:x.confirmations})):localQuestions[canonical].map(q=>({q,count:0}));renderQuestions(display,jdKeywords);renderTopics(p,jdKeywords);renderList('behavioral',p.behavioral);renderList('checklist',p.checklist);results.classList.remove('hidden');renderResearch(null);loadExperiences(r,c);if(API){try{const res=await fetch(API+'/research',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role:r,company:c})});if(res.ok)renderResearch(await res.json());else renderResearch({enabled:false,message:'Research request failed.'})}catch(e){renderResearch({enabled:false,message:'Could not reach the research backend.'})}}results.scrollIntoView({behavior:'smooth'})}
+async function confirm(id,q,button,items){if(button.dataset.confirmed==='1')return;if(API&&id){try{const res=await fetch(API+'/confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question_id:id})});if(res.ok){const d=await res.json();const countEl=button.parentElement.parentElement.querySelector('small b');if(countEl)countEl.textContent=d.confirmations;button.classList.add('confirmed');button.textContent='✓ Asked in an interview';button.dataset.confirmed='1';localStorage.setItem('confirmed:'+id,'1');const item=items.find(x=>x.id===id);if(item)item.count=d.confirmations;updateSignal(items);return}}catch(e){console.warn('Community confirmation failed; using local fallback.')}}const k='asked:'+q.toLowerCase().replace(/\W+/g,'-');if(localStorage.getItem(k))return;localStorage.setItem(k,'1');button.classList.add('confirmed');button.textContent='✓ Asked in an interview';button.dataset.confirmed='1';const countEl=button.parentElement.parentElement.querySelector('small b');if(countEl)countEl.textContent='1';updateSignal(items)}
+function renderQuestions(items,jdKeywords=[]){const displayItems=items||[];$('questions').innerHTML=displayItems.map((x,i)=>{const q=x.q||x,n=Number(x.count)||0,already=x.id&&localStorage.getItem('confirmed:'+x.id),reported=x.id&&localStorage.getItem('reported:'+x.id);return `<div class="q"><div class="q-head"><span class="q-num">${String(i+1).padStart(2,'0')}</span><p>${escapeHtml(q)}</p></div><small>${x.id?'Candidate reports':'Recommended for this role/JD'} · Confirmations: <b>${n}</b></small><details class="answer"><summary>How should I answer?</summary><p>${escapeHtml(answerGuide(q,jdKeywords))}</p></details><div class="q-actions"><button class="asked ${already?'confirmed':''}" data-id="${x.id||''}" data-confirmed="${already?'1':'0'}">${already?'✓ Asked in an interview':'I was asked this'}</button>${x.id?`<button class="report ${reported?'reported':''}" data-id="${x.id}">${reported?'✓ Experience added':'Add interview context'}</button>`:''}</div></div>`}).join('');const buttons=[...document.querySelectorAll('.asked')];buttons.forEach((b,i)=>{const item=displayItems[i],q=item.q||item;b.onclick=()=>confirm(item.id,q,b,displayItems)});document.querySelectorAll('.report').forEach(b=>b.onclick=()=>openReport(displayItems.find(x=>String(x.id)===String(b.dataset.id))));updateSignal(displayItems)}
+function updateSignal(items=[]){const communityTotal=items.reduce((sum,item)=>sum+(Number(item.count)||0),0);const localTotal=new Set([...Object.keys(localStorage).filter(k=>k.startsWith('asked:')), ...Object.keys(localStorage).filter(k=>k.startsWith('confirmed:'))]).size;$('signalNumber').textContent=communityTotal;$('confidence').textContent=communityTotal?`${communityTotal} candidate confirmation${communityTotal===1?'':'s'} across these questions`:'Community confidence: building';if(localTotal&&communityTotal===0)$('confidence').textContent='Your confirmation is recorded locally while this pack builds community evidence'}
 
-async function submitReport(){
-  if(!reportQuestion||!API)return;
-  const status=$('reportStatus');status.textContent='Saving…';
-  try{
-    const res=await fetch(API+'/experiences',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question_id:reportQuestion.id,role:currentRole,company:$('reportCompany').value.trim(),interview_round:$('reportRound').value,difficulty:$('reportDifficulty').value})});
-    const data=await res.json();
-    if(!res.ok)throw new Error(data.detail||'Could not save report');
-    status.textContent=data.duplicate?'You already reported this question from this browser.':'Saved — thank you for improving the community signal.';
-    if(!data.duplicate){
-      const button=document.querySelector(`.report[data-id="${reportQuestion.id}"]`);if(button){button.classList.add('reported');button.textContent='✓ Experience added'}
-      await loadExperiences(currentRole,company.value.trim());
-    }
-    setTimeout(closeReport,900);
-  }catch(e){status.textContent=e.message||'Could not save report.'}
-}
-
-async function generate(){
-  const r=(role.value||'Software Engineer').trim();
-  const c=(company?.value||'').trim();
-  const jdText=jd.value.trim();
-  currentRole=r;
-  $('resultTitle').textContent=r;
-  $('resultSub').textContent=jdText?(c?`Customized from your job description, role patterns, and ${c} web research.`:'Customized from your job description + role patterns.'):(c?`Role-based preparation with ${c} web research.`:'Role-based preparation pack.');
-  let data=null;
-  if(API){try{const res=await fetch(API+'/prep',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role:r,job_description:jdText})});if(res.ok)data=await res.json()}catch(e){console.warn('InterviewLens API unavailable; using local pack.')}}
-  const p=choosePack(r+' '+jdText);
-  const jdKeywords=data?.jd_keywords||[];
-  currentQuestions=(data&&data.questions?.length)?data.questions.map(x=>({id:x.id,q:x.question,count:x.confirmations})):p.questions||[];
-  renderQuestions(currentQuestions,jdKeywords);
-  renderTopics(p,jdKeywords);renderList('behavioral',p.behavioral);renderList('checklist',p.checklist);
-  results.classList.remove('hidden');renderResearch(null);
-  loadExperiences(r,c);
-  if(API){try{const res=await fetch(API+'/research',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role:r,company:c})});if(res.ok)renderResearch(await res.json());else renderResearch({enabled:false,message:'Research request failed.'})}catch(e){renderResearch({enabled:false,message:'Could not reach the research backend.'})}}
-  results.scrollIntoView({behavior:'smooth'})
-}
-
-async function confirm(id,q,button,items){
-  if(button.dataset.confirmed==='1')return;
-  if(API&&id){
-    try{
-      const res=await fetch(API+'/confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question_id:id})});
-      if(res.ok){
-        const d=await res.json();
-        const countEl=button.parentElement.querySelector('small b');if(countEl)countEl.textContent=d.confirmations;
-        button.classList.add('confirmed');button.textContent='✓ Asked in an interview';button.dataset.confirmed='1';
-        localStorage.setItem('confirmed:'+id,'1');
-        const item=items.find(x=>x.id===id);if(item)item.count=d.confirmations;
-        updateSignal(items);return
-      }
-    }catch(e){console.warn('Community confirmation failed; using local fallback.')}}
-  const k='asked:'+q.toLowerCase().replace(/\W+/g,'-');
-  if(localStorage.getItem(k))return;
-  localStorage.setItem(k,'1');button.classList.add('confirmed');button.textContent='✓ Asked in an interview';button.dataset.confirmed='1';
-  const countEl=button.parentElement.querySelector('small b');if(countEl)countEl.textContent='1';updateSignal(items)
-}
-
-function renderQuestions(items,jdKeywords=[]){
-  const displayItems=items.length?items:[];
-  $('questions').innerHTML=displayItems.map((x,i)=>{
-    const q=x.q||x,n=Number(x.count)||0,already=x.id&&localStorage.getItem('confirmed:'+x.id),reported=x.id&&localStorage.getItem('reported:'+x.id);
-    return `<div class="q"><div class="q-head"><span class="q-num">${String(i+1).padStart(2,'0')}</span><p>${escapeHtml(q)}</p></div><small>${x.id?'Community reports':'Recommended for this role/JD'} · Confirmations: <b>${n}</b></small><details class="answer"><summary>How should I answer?</summary><p>${escapeHtml(answerGuide(q,jdKeywords))}</p></details><div class="q-actions"><button class="asked ${already?'confirmed':''}" data-id="${x.id||''}" data-confirmed="${already?'1':'0'}">${already?'✓ Asked in an interview':'I was asked this'}</button>${x.id?`<button class="report ${reported?'reported':''}" data-id="${x.id}">${reported?'✓ Experience added':'Add interview context'}</button>`:''}</div></div>`
-  }).join('');
-  const buttons=[...document.querySelectorAll('.asked')];
-  buttons.forEach((b,i)=>{const item=displayItems[i],q=item.q||item;b.onclick=()=>confirm(item.id,q,b,displayItems)});
-  document.querySelectorAll('.report').forEach((b,i)=>b.onclick=()=>openReport(displayItems.find(x=>String(x.id)===String(b.dataset.id))));
-  updateSignal(displayItems)
-}
-
-function updateSignal(items=[]){
-  const communityTotal=items.reduce((sum,item)=>sum+(Number(item.count)||0),0);
-  const localTotal=new Set([...Object.keys(localStorage).filter(k=>k.startsWith('asked:')), ...Object.keys(localStorage).filter(k=>k.startsWith('confirmed:'))]).size;
-  $('signalNumber').textContent=communityTotal;
-  $('confidence').textContent=communityTotal?`${communityTotal} candidate confirmation${communityTotal===1?'':'s'} across these questions`:'Community confidence: building';
-  const localLabel=$('confidence');if(localLabel&&localTotal&&communityTotal===0)localLabel.textContent='Your confirmation is recorded locally while this pack builds community evidence';
-}
-
-$('generate').onclick=generate;
-$('reset').onclick=()=>{results.classList.add('hidden');role.focus();window.scrollTo({top:0,behavior:'smooth'})};
-$('closeReport').onclick=closeReport;
-$('cancelReport').onclick=closeReport;
-$('submitReport').onclick=submitReport;
-$('reportModal').addEventListener('click',e=>{if(e.target.id==='reportModal')closeReport()});
-document.querySelectorAll('.examples button').forEach(b=>b.onclick=()=>{role.value=b.dataset.role;role.focus()});
-updateSignal();
+$('generate').onclick=generate;$('reset').onclick=()=>{results.classList.add('hidden');role.focus();window.scrollTo({top:0,behavior:'smooth'})};$('closeReport').onclick=closeReport;$('cancelReport').onclick=closeReport;$('submitReport').onclick=submitReport;$('reportModal').addEventListener('click',e=>{if(e.target.id==='reportModal')closeReport()});document.querySelectorAll('.examples button').forEach(b=>b.onclick=()=>{role.value=b.dataset.role;role.focus()});updateSignal();
