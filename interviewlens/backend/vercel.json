@@ -5,6 +5,10 @@
     {"src": "mock.py", "use": "@vercel/python"}
   ],
   "routes": [
+    {"src": "/mock/health", "dest": "mock.py"},
+    {"src": "/mock/evaluate", "dest": "mock.py"},
+    {"src": "/mock/next", "dest": "mock.py"},
+    {"src": "/mock/report", "dest": "mock.py"},
     {"src": "/mock/(.*)", "dest": "mock.py"},
     {"src": "/(.*)", "dest": "main.py"}
   ]
