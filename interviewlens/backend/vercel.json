@@ -2,13 +2,15 @@
   "version": 2,
   "builds": [
     {"src": "main.py", "use": "@vercel/python"},
-    {"src": "mock.py", "use": "@vercel/python"}
+    {"src": "mock.py", "use": "@vercel/python"},
+    {"src": "adaptive.py", "use": "@vercel/python"},
+    {"src": "report.py", "use": "@vercel/python"}
   ],
   "routes": [
     {"src": "/mock/health", "dest": "mock.py"},
     {"src": "/mock/evaluate", "dest": "mock.py"},
-    {"src": "/mock/next", "dest": "mock.py"},
-    {"src": "/mock/report", "dest": "mock.py"},
+    {"src": "/mock/next", "dest": "adaptive.py"},
+    {"src": "/mock/report", "dest": "report.py"},
     {"src": "/mock/(.*)", "dest": "mock.py"},
     {"src": "/(.*)", "dest": "main.py"}
   ]
