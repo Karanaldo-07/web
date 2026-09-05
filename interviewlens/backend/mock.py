@@ -8,7 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
+GEMINI_FALLBACK_MODELS = [m for m in [GEMINI_MODEL, "gemini-3.5-flash", "gemini-3.5-flash-lite"] if m]
 app = FastAPI(title="InterviewLens Mock Interview AI")
 app.add_middleware(CORSMiddleware, allow_origins=["https://karanaldo-07.github.io", "http://localhost:3000", "http://127.0.0.1:5500"], allow_methods=["GET","POST","OPTIONS"], allow_headers=["Content-Type"])
 _RATE={}
@@ -29,13 +30,21 @@ NEXT_SCHEMA={"type":"object","properties":{"next_question":{"type":"string","min
 REPORT_SCHEMA={"type":"object","properties":{"readiness":{"type":"string","enum":["Not ready yet","Developing","Interview-ready","Strongly interview-ready"]},"headline":{"type":"string","maxLength":180},"summary":{"type":"string","maxLength":700},"strengths":{"type":"array","items":{"type":"string"},"minItems":2,"maxItems":5},"weak_areas":{"type":"array","items":{"type":"string"},"minItems":2,"maxItems":5},"priority_topics":{"type":"array","items":{"type":"string"},"minItems":2,"maxItems":6},"action_plan":{"type":"array","items":{"type":"string"},"minItems":3,"maxItems":6},"next_questions":{"type":"array","items":{"type":"string"},"minItems":3,"maxItems":5}},"required":["readiness","headline","summary","strengths","weak_areas","priority_topics","action_plan","next_questions"]}
 
 def gemini_json(prompt,schema):
-    try:
-        r=requests.post(f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent",headers={"x-goog-api-key":GEMINI_API_KEY,"Content-Type":"application/json"},json={"contents":[{"parts":[{"text":prompt}]}],"generationConfig":{"temperature":0.2,"responseMimeType":"application/json","responseSchema":schema}},timeout=25); r.raise_for_status(); return json.loads(r.json()["candidates"][0]["content"]["parts"][0]["text"])
-    except (requests.RequestException,KeyError,IndexError,TypeError,json.JSONDecodeError) as exc: raise HTTPException(502,f"AI request failed: {type(exc).__name__}") from exc
+    last_status=None
+    for model in dict.fromkeys(GEMINI_FALLBACK_MODELS):
+        try:
+            r=requests.post(f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",headers={"x-goog-api-key":GEMINI_API_KEY,"Content-Type":"application/json"},json={"contents":[{"parts":[{"text":prompt}]}],"generationConfig":{"temperature":0.2,"responseMimeType":"application/json","responseSchema":schema}},timeout=25)
+            r.raise_for_status()
+            data=json.loads(r.json()["candidates"][0]["content"]["parts"][0]["text"])
+            return data, model
+        except (requests.RequestException,KeyError,IndexError,TypeError,json.JSONDecodeError) as exc:
+            last_status=getattr(getattr(exc,"response",None),"status_code",None)
+            continue
+    raise HTTPException(502,f"AI request failed after model fallback (last_status={last_status})")
 
 @app.get("/health")
 @app.get("/mock/health")
-def health(): return {"status":"ok","provider":"gemini","configured":bool(GEMINI_API_KEY),"model":GEMINI_MODEL}
+def health(): return {"status":"ok","provider":"gemini","configured":bool(GEMINI_API_KEY),"model":GEMINI_MODEL,"fallback_models":list(dict.fromkeys(GEMINI_FALLBACK_MODELS))}
 @app.post("/evaluate")
 @app.post("/mock/evaluate")
 def evaluate(req:MockEvaluateRequest,request:Request):
@@ -47,11 +56,12 @@ Job description: {req.job_description[:8000]}
 Interview question: {req.question}
 Candidate answer: {req.answer}
 Score relevance /30, completeness /30, structure /20, specificity /20. Be fair to junior candidates. Do not invent facts. Concise correct answers can score well. For behavioral questions prioritize the candidate's own actions and outcomes."""
-    x=gemini_json(prompt,SCHEMA)
+    x,used_model=gemini_json(prompt,SCHEMA)
     for k,c in [("total",100),("relevance",30),("completeness",30),("structure",20),("specificity",20)]: x[k]=max(0,min(c,int(x[k])))
-    x.update(source="gemini",model=GEMINI_MODEL); return x
+    x.update(source="gemini",model=used_model); return x
 
 @app.post("/adaptive")
+@app.post("/mock/next")
 def adaptive(req:NextQuestionRequest,request:Request):
     rate_limit(request)
     if not GEMINI_API_KEY: raise HTTPException(503,"AI interviewer is not configured.")
@@ -65,9 +75,10 @@ Evaluation: {evaluation}
 Questions already asked:\n{asked}
 This is question {req.question_number} of {req.total_questions}.
 Adapt difficulty: strong answers get a deeper follow-up or harder adjacent topic; weak answers get a focused clarifying question or simpler foundation check. Never repeat. Stay role/JD relevant. Mix technical, coding/problem-solving, system-design and behavioral topics. Target weaknesses. Keep answerable in 1-3 minutes. Return only JSON."""
-    x=gemini_json(prompt,NEXT_SCHEMA); x.update(source="gemini",model=GEMINI_MODEL); return x
+    x,used_model=gemini_json(prompt,NEXT_SCHEMA); x.update(source="gemini",model=used_model); return x
 
 @app.post("/report")
+@app.post("/mock/report")
 def report(req:ReportRequest,request:Request):
     rate_limit(request)
     if not GEMINI_API_KEY: raise HTTPException(503,"AI report is not configured.")
@@ -77,4 +88,4 @@ Job description: {req.job_description[:7000]}
 Questions asked: {json.dumps(req.questions,ensure_ascii=False)[:6000]}
 Per-question evaluation results: {json.dumps(req.results,ensure_ascii=False)[:12000]}
 Base conclusions on supplied evaluations. Do not invent candidate facts. Readiness should reflect overall performance. Identify recurring weak dimensions and turn them into concrete role/JD-relevant revision topics. Make the action plan practical and ordered. Next questions should target weak areas. Be concise and honest."""
-    x=gemini_json(prompt,REPORT_SCHEMA); x.update(source="gemini",model=GEMINI_MODEL); return x
+    x,used_model=gemini_json(prompt,REPORT_SCHEMA); x.update(source="gemini",model=used_model); return x
