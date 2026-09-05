@@ -56,6 +56,13 @@ class NextQuestionRequest(BaseModel):
     total_questions: int = Field(default=5, ge=1, le=10)
 
 
+class ReportRequest(BaseModel):
+    role: str = Field(default="Software Engineer", max_length=120)
+    job_description: str = Field(default="", max_length=12000)
+    results: list[dict] = Field(min_length=1, max_length=10)
+    questions: list[str] = Field(default_factory=list, max_length=10)
+
+
 SCHEMA = {
     "type": "object",
     "properties": {
@@ -80,6 +87,21 @@ NEXT_SCHEMA = {
         "reason": {"type": "string", "maxLength": 500},
     },
     "required": ["next_question", "category", "difficulty", "reason"],
+}
+
+REPORT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "readiness": {"type": "string", "enum": ["Not ready yet", "Developing", "Interview-ready", "Strongly interview-ready"]},
+        "headline": {"type": "string", "maxLength": 180},
+        "summary": {"type": "string", "maxLength": 700},
+        "strengths": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 5},
+        "weak_areas": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 5},
+        "priority_topics": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 6},
+        "action_plan": {"type": "array", "items": {"type": "string"}, "minItems": 3, "maxItems": 6},
+        "next_questions": {"type": "array", "items": {"type": "string"}, "minItems": 3, "maxItems": 5},
+    },
+    "required": ["readiness", "headline", "summary", "strengths", "weak_areas", "priority_topics", "action_plan", "next_questions"],
 }
 
 
@@ -169,6 +191,36 @@ Rules:
 - Return only JSON matching the schema.
 """
     result = gemini_json(prompt, NEXT_SCHEMA)
+    result["source"] = "gemini"
+    result["model"] = GEMINI_MODEL
+    return result
+
+
+@app.post("/report")
+def report(req: ReportRequest, request: Request):
+    rate_limit(request)
+    if not GEMINI_API_KEY:
+        raise HTTPException(503, "AI report is not configured.")
+    compact_results = json.dumps(req.results, ensure_ascii=False)[:12000]
+    compact_questions = json.dumps(req.questions, ensure_ascii=False)[:6000]
+    prompt = f"""You are the senior interviewer producing a final candidate report after a mock interview.
+Return ONLY JSON matching the schema.
+
+Role: {req.role}
+Job description: {req.job_description[:7000]}
+Questions asked: {compact_questions}
+Per-question evaluation results: {compact_results}
+
+Rules:
+- Base conclusions on the supplied evaluations. Do not invent candidate experience, technologies, or facts.
+- Readiness must reflect the overall performance, not one unusually good or bad answer.
+- Identify recurring weak dimensions and convert them into concrete revision topics.
+- Prioritize role/JD-relevant topics.
+- Make the action plan practical and ordered.
+- Next questions should specifically target the candidate's weak areas.
+- Be concise and honest; this is a coaching report, not praise for its own sake.
+"""
+    result = gemini_json(prompt, REPORT_SCHEMA)
     result["source"] = "gemini"
     result["model"] = GEMINI_MODEL
     return result
