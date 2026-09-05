@@ -46,10 +46,10 @@ def question_rows(role):
     role=role_key(role)
     if persistent_enabled():
         try:
-            return sb_request('GET','questions',params={'select':'id,question,confirmations','role':f'eq.{role}','order':'confirmations.desc,id.asc','limit':'12'}) or []
+            return sb_request('GET','questions',params={'select':'id,question,confirmations','role':f'eq.{role}','order':'confirmations.desc,id.asc','limit':'50'}) or []
         except requests.RequestException: pass
     with sqlite_db() as c:
-        return [dict(r) for r in c.execute('SELECT id,question,confirmations FROM questions WHERE role=? ORDER BY confirmations DESC,id ASC LIMIT 12',(role,)).fetchall()]
+        return [dict(r) for r in c.execute('SELECT id,question,confirmations FROM questions WHERE role=? ORDER BY confirmations DESC,id ASC LIMIT 50',(role,)).fetchall()]
 
 def seed_questions(role,questions):
     role=role_key(role)
@@ -89,7 +89,6 @@ KEYWORD_QUESTIONS={
 'c++':['What is the difference between a pointer and a reference in C++?'],
 'c#':['What is the difference between an interface and an abstract class in C#?']}
 
-# Common JD wording mapped to the same technology question bank.
 KEYWORD_ALIASES={'postgresql':'sql','postgres':'sql','mysql':'sql','ms sql':'sql','mssql':'sql','sql server':'sql','numpy':'python','flask':'python','fast api':'fastapi','powerbi':'power bi','ml':'machine learning','ci/cd':'git','cicd':'git','restful api':'rest api','k8s':'kubernetes'}
 
 RESPONSIBILITY_PATTERNS=[
@@ -108,8 +107,7 @@ def role_key(role):
 
 def normalize_jd(text):
     t=re.sub(r'\s+',' ',(text or '').lower())
-    for alias,canonical in KEYWORD_ALIASES.items():
-        t=t.replace(alias,canonical)
+    for alias,canonical in KEYWORD_ALIASES.items(): t=t.replace(alias,canonical)
     return t
 
 def jd_keywords(job_description):
@@ -119,29 +117,33 @@ def jd_keywords(job_description):
     return found
 
 def jd_questions(job_description):
-    text=normalize_jd(job_description); found=[]
-    keywords=jd_keywords(job_description)
-    for keyword in keywords:
-        found.extend(KEYWORD_QUESTIONS[keyword])
-    # Add questions that explicitly connect the two strongest technologies in the JD.
+    text=normalize_jd(job_description); found=[]; keywords=jd_keywords(job_description)
+    for keyword in keywords: found.extend(KEYWORD_QUESTIONS[keyword])
     if len(keywords)>=2:
-        a,b=keywords[0],keywords[1]
-        found.append(f'How would you use {a} and {b} together in a project for this role?')
-    # Turn responsibility language into interview prompts, without pretending these are reported questions.
+        a,b=keywords[0],keywords[1]; found.append(f'How would you use {a} and {b} together in a project for this role?')
     for pattern,question in RESPONSIBILITY_PATTERNS:
         if re.search(pattern,text) and question not in found: found.append(question)
     return found
 
 def targeted_questions(role,job_description):
-    canonical=role_key(role); base=SEED.get(canonical,SEED['software engineer'])
-    extra=jd_questions(job_description)
+    canonical=role_key(role); base=SEED.get(canonical,SEED['software engineer']); extra=jd_questions(job_description)
     result=[]; seen=set()
-    # Put JD-specific questions first so the most relevant questions survive the 12-question cap.
     for q in extra+base:
         key=q.lower().strip()
-        if key not in seen:
-            seen.add(key); result.append(q)
+        if key not in seen: seen.add(key); result.append(q)
     return result[:12]
+
+def order_prep_rows(targets,rows):
+    by_question={r.get('question','').strip().lower():r for r in rows}
+    ordered=[]; used=set()
+    for q in targets:
+        row=by_question.get(q.strip().lower())
+        if row:
+            ordered.append(row); used.add(row.get('id'))
+    # Fill remaining slots with previously confirmed community questions.
+    for row in rows:
+        if row.get('id') not in used and len(ordered)<12: ordered.append(row)
+    return ordered
 
 @app.get('/health')
 def health(): return {'status':'ok','database':'supabase' if persistent_enabled() else 'sqlite-mvp'}
@@ -149,12 +151,10 @@ def health(): return {'status':'ok','database':'supabase' if persistent_enabled(
 @app.post('/prep')
 def prep(req:PrepRequest,request:Request):
     rate_limit(request,'prep',30,300)
-    role=req.role.strip() or 'Software Engineer'; canonical=role_key(role)
-    questions=targeted_questions(role,req.job_description)
-    seed_questions(canonical,questions)
+    role=req.role.strip() or 'Software Engineer'; canonical=role_key(role); targets=targeted_questions(role,req.job_description)
+    seed_questions(canonical,targets)
     rows=question_rows(canonical)
-    technologies=jd_keywords(req.job_description)
-    return {'role':role,'questions':rows,'jd_keywords':technologies,'evidence_note':'Role and JD questions are recommendations unless a question has candidate confirmations.','database':'persistent' if persistent_enabled() else 'mvp'}
+    return {'role':role,'questions':order_prep_rows(targets,rows),'jd_keywords':jd_keywords(req.job_description),'evidence_note':'Role and JD questions are recommendations unless a question has candidate confirmations.','database':'persistent' if persistent_enabled() else 'mvp'}
 
 @app.post('/research')
 def research(req:ResearchRequest,request:Request):
