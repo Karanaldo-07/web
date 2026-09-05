@@ -84,7 +84,7 @@ jobs:
           print('Existing reported questions:', len(d['items']))
           PY
 
-      - name: Check mock AI endpoint and asset
+      - name: Check mock AI endpoint and adaptive interviewer
         shell: bash
         run: |
           curl -fsS https://interviewlens-api.vercel.app/mock/health > mock-health.json
@@ -97,10 +97,22 @@ jobs:
           print('Mock AI endpoint: PASS')
           print('Gemini configured:', d.get('configured'))
           PY
+          curl -fsS -X POST https://interviewlens-api.vercel.app/mock/next \
+            -H 'Content-Type: application/json' \
+            --data '{"role":"Data Analyst","job_description":"Analyze business data using SQL and Power BI.","current_question":"How do you optimize a slow SQL query?","candidate_answer":"I inspect the execution plan, add appropriate indexes, reduce unnecessary rows and retest.","evaluation":{"total":82,"relevance":26,"completeness":25,"structure":17,"specificity":14},"asked_questions":["How do you optimize a slow SQL query?"],"question_number":1,"total_questions":5}' > next.json
+          python - <<'PY'
+          import json
+          d=json.load(open('next.json'))
+          assert isinstance(d.get('next_question'), str) and len(d['next_question']) >= 5, d
+          assert d.get('category'), d
+          assert d.get('difficulty'), d
+          print('Adaptive interviewer: PASS')
+          print('Next category:', d['category'], '| difficulty:', d['difficulty'])
+          PY
           curl -fsS https://karanaldo-07.github.io/web/interviewlens/mock.js > mock.js
           grep -q 'AI Mock Interview' mock.js
           grep -q '/mock/evaluate' mock.js
-          grep -q 'source.*gemini' mock.js
+          grep -q '/mock/next' mock.js
           echo 'Mock interview asset: PASS'
 
       - name: Check live GitHub Pages site
