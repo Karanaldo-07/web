@@ -1,4 +1,4 @@
-# Live smoke coverage includes Gemini adaptive interviewer + GitHub Pages asset checks.
+# Live smoke coverage includes Gemini adaptive interviewer + final report + GitHub Pages assets.
 name: InterviewLens Live Smoke Test
 
 on:
@@ -85,7 +85,7 @@ jobs:
           print('Existing reported questions:', len(d['items']))
           PY
 
-      - name: Check mock AI endpoint and adaptive interviewer
+      - name: Check mock AI endpoints
         shell: bash
         run: |
           curl -fsS https://interviewlens-api.vercel.app/mock/health > mock-health.json
@@ -95,8 +95,7 @@ jobs:
           assert d.get('status') == 'ok', d
           assert d.get('provider') == 'gemini', d
           assert d.get('configured') is True, d
-          print('Mock AI endpoint: PASS')
-          print('Gemini configured:', d.get('configured'))
+          print('Mock AI health: PASS')
           PY
           curl -fsS -X POST https://interviewlens-api.vercel.app/mock/next \
             -H 'Content-Type: application/json' \
@@ -108,14 +107,34 @@ jobs:
           assert d.get('category'), d
           assert d.get('difficulty'), d
           print('Adaptive interviewer: PASS')
-          print('Next category:', d['category'], '| difficulty:', d['difficulty'])
+          PY
+          curl -fsS -X POST https://interviewlens-api.vercel.app/mock/report \
+            -H 'Content-Type: application/json' \
+            --data '{"role":"Data Analyst","job_description":"Analyze business data using SQL and Power BI.","questions":["How do you optimize a slow SQL query?","Tell me about a dashboard you built."],"results":[{"question":"How do you optimize a slow SQL query?","evaluation":{"total":82,"relevance":26,"completeness":25,"structure":17,"specificity":14}},{"question":"Tell me about a dashboard you built.","evaluation":{"total":68,"relevance":23,"completeness":20,"structure":13,"specificity":12}}]}' > report.json
+          python - <<'PY'
+          import json
+          d=json.load(open('report.json'))
+          assert d.get('readiness'), d
+          assert isinstance(d.get('strengths'), list) and d['strengths'], d
+          assert isinstance(d.get('weak_areas'), list) and d['weak_areas'], d
+          assert isinstance(d.get('priority_topics'), list) and d['priority_topics'], d
+          assert isinstance(d.get('action_plan'), list) and d['action_plan'], d
+          assert isinstance(d.get('next_questions'), list) and d['next_questions'], d
+          print('AI final report: PASS')
           PY
 
       - name: Check live GitHub Pages site
         shell: bash
         run: |
-          curl -fsS https://karanaldo-07.github.io/web/ > site.html
-          curl -fsS https://karanaldo-07.github.io/web/mock.js > mock.js
+          for i in {1..12}; do
+            if curl -fsS https://karanaldo-07.github.io/web/ > site.html && curl -fsS https://karanaldo-07.github.io/web/mock.js > mock.js; then
+              break
+            fi
+            echo "Pages not ready yet; retry $i/12"
+            sleep 10
+          done
+          test -s site.html
+          test -s mock.js
           grep -q 'InterviewLens' site.html
           grep -q 'app.js' site.html
           grep -q 'mock.js' site.html
@@ -123,4 +142,5 @@ jobs:
           grep -q 'AI Mock Interview' mock.js
           grep -q '/mock/evaluate' mock.js
           grep -q '/mock/next' mock.js
-          echo 'GitHub Pages + Mock asset: PASS'
+          grep -q '/mock/report' mock.js
+          echo 'GitHub Pages + Mock asset + final report: PASS'
