@@ -34,8 +34,10 @@ def gemini_json(prompt,schema):
     except (requests.RequestException,KeyError,IndexError,TypeError,json.JSONDecodeError) as exc: raise HTTPException(502,f"AI request failed: {type(exc).__name__}") from exc
 
 @app.get("/health")
+@app.get("/mock/health")
 def health(): return {"status":"ok","provider":"gemini","configured":bool(GEMINI_API_KEY),"model":GEMINI_MODEL}
 @app.post("/evaluate")
+@app.post("/mock/evaluate")
 def evaluate(req:MockEvaluateRequest,request:Request):
     rate_limit(request)
     if not GEMINI_API_KEY: raise HTTPException(503,"AI evaluator is not configured. Local evaluation remains available.")
