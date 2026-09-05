@@ -30,7 +30,7 @@ def rate_limit(request: Request, limit=12, window=600):
     now = time.time()
     hits = [t for t in _RATE.get(ip, []) if now - t < window]
     if len(hits) >= limit:
-        raise HTTPException(429, "Too many AI evaluations. Please try again later.")
+        raise HTTPException(429, "Too many AI requests. Please try again later.")
     hits.append(now)
     _RATE[ip] = hits
     if len(_RATE) > 2000:
@@ -45,6 +45,17 @@ class MockEvaluateRequest(BaseModel):
     answer: str = Field(min_length=5, max_length=12000)
 
 
+class NextQuestionRequest(BaseModel):
+    role: str = Field(default="Software Engineer", max_length=120)
+    job_description: str = Field(default="", max_length=12000)
+    current_question: str = Field(min_length=3, max_length=1000)
+    candidate_answer: str = Field(min_length=5, max_length=12000)
+    evaluation: dict
+    asked_questions: list[str] = Field(default_factory=list, max_length=10)
+    question_number: int = Field(default=1, ge=1, le=10)
+    total_questions: int = Field(default=5, ge=1, le=10)
+
+
 SCHEMA = {
     "type": "object",
     "properties": {
@@ -57,11 +68,40 @@ SCHEMA = {
         "improvements": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 4},
         "strong_answer_direction": {"type": "string"},
     },
-    "required": [
-        "total", "relevance", "completeness", "structure", "specificity",
-        "strengths", "improvements", "strong_answer_direction"
-    ],
+    "required": ["total", "relevance", "completeness", "structure", "specificity", "strengths", "improvements", "strong_answer_direction"],
 }
+
+NEXT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "next_question": {"type": "string", "minLength": 5, "maxLength": 1000},
+        "category": {"type": "string", "enum": ["Technical", "Coding", "System Design", "Behavioral", "Problem Solving", "Role-specific"]},
+        "difficulty": {"type": "string", "enum": ["Easy", "Medium", "Hard"]},
+        "reason": {"type": "string", "maxLength": 500},
+    },
+    "required": ["next_question", "category", "difficulty", "reason"],
+}
+
+
+def gemini_json(prompt: str, schema: dict):
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+    body = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json", "responseSchema": schema},
+    }
+    try:
+        response = requests.post(
+            url,
+            headers={"x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json"},
+            json=body,
+            timeout=25,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        text = payload["candidates"][0]["content"]["parts"][0]["text"]
+        return json.loads(text)
+    except (requests.RequestException, KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
+        raise HTTPException(502, f"AI request failed: {type(exc).__name__}") from exc
 
 
 @app.get("/health")
@@ -74,7 +114,6 @@ def evaluate(req: MockEvaluateRequest, request: Request):
     rate_limit(request)
     if not GEMINI_API_KEY:
         raise HTTPException(503, "AI evaluator is not configured. Local evaluation remains available.")
-
     prompt = f"""You are an expert technical interviewer evaluating a candidate's answer.
 Return ONLY the requested JSON structure.
 
@@ -85,42 +124,51 @@ Candidate answer: {req.answer}
 
 Scoring rubric:
 - relevance /30: directly addresses what the question asks; do not reward keyword stuffing.
-- completeness /30: covers the important reasoning, steps, concepts, edge cases, or result appropriate to the question.
+- completeness /30: covers important reasoning, steps, concepts, edge cases, or result appropriate to the question.
 - structure /20: clear, logical, easy-to-follow explanation; use STAR for behavioral questions when appropriate.
 - specificity /20: concrete examples, technologies, metrics, constraints, trade-offs, or personal contribution when appropriate.
 
-Be fair to junior candidates: concise answers can still score well when technically correct and directly useful. Do not invent facts about the candidate. For coding/technical questions, prioritize correctness and reasoning. For behavioral questions, prioritize the candidate's own actions and outcomes.
+Be fair to junior candidates. Concise answers can score well when correct. Do not invent facts. For coding/technical questions prioritize correctness and reasoning; for behavioral questions prioritize the candidate's own actions and outcomes.
 """
+    result = gemini_json(prompt, SCHEMA)
+    for key, cap in [("total", 100), ("relevance", 30), ("completeness", 30), ("structure", 20), ("specificity", 20)]:
+        result[key] = max(0, min(cap, int(result[key])))
+    result["source"] = "gemini"
+    result["model"] = GEMINI_MODEL
+    return result
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
-    body = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": 0.2,
-            "responseMimeType": "application/json",
-            "responseSchema": SCHEMA,
-        },
-    }
 
-    try:
-        response = requests.post(
-            url,
-            headers={"x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json"},
-            json=body,
-            timeout=25,
-        )
-        response.raise_for_status()
-        payload = response.json()
-        text = payload["candidates"][0]["content"]["parts"][0]["text"]
-        result = json.loads(text)
-    except (requests.RequestException, KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
-        raise HTTPException(502, f"AI evaluation failed: {type(exc).__name__}") from exc
+@app.post("/next")
+def next_question(req: NextQuestionRequest, request: Request):
+    rate_limit(request)
+    if not GEMINI_API_KEY:
+        raise HTTPException(503, "AI interviewer is not configured.")
+    asked = "\n".join(f"- {q}" for q in req.asked_questions[-10:]) or "- none"
+    evaluation = json.dumps(req.evaluation, ensure_ascii=False)[:4000]
+    prompt = f"""You are the adaptive interviewer in a realistic {req.role} interview.
+Generate exactly one next interview question as JSON.
 
-    result["total"] = max(0, min(100, int(result["total"])))
-    result["relevance"] = max(0, min(30, int(result["relevance"])))
-    result["completeness"] = max(0, min(30, int(result["completeness"])))
-    result["structure"] = max(0, min(20, int(result["structure"])))
-    result["specificity"] = max(0, min(20, int(result["specificity"])))
+Role: {req.role}
+Job description: {req.job_description[:7000]}
+Current question: {req.current_question}
+Candidate answer: {req.candidate_answer[:7000]}
+Evaluation of current answer: {evaluation}
+Questions already asked:
+{asked}
+
+This is question {req.question_number} of {req.total_questions}.
+
+Rules:
+- Adapt difficulty to the answer: strong answers should get a deeper follow-up or harder adjacent topic; weak answers should get a focused clarifying question or a simpler foundation check.
+- Do not repeat an already asked question.
+- Stay relevant to the role and job description.
+- Mix technical, coding/problem-solving, system-design, and behavioral topics when appropriate.
+- A follow-up should test understanding, not merely rephrase the previous question.
+- Keep the question answerable in 1-3 minutes.
+- If the candidate has a clear weakness, target that weakness next.
+- Return only JSON matching the schema.
+"""
+    result = gemini_json(prompt, NEXT_SCHEMA)
     result["source"] = "gemini"
     result["model"] = GEMINI_MODEL
     return result
