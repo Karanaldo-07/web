@@ -1,0 +1,75 @@
+name: InterviewLens Live Smoke Test
+
+on:
+  workflow_run:
+    workflows: ["Deploy InterviewLens"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check live API health
+        shell: bash
+        run: |
+          for i in {1..12}; do
+            if curl -fsS https://interviewlens-api.vercel.app/health; then
+              echo
+              exit 0
+            fi
+            echo "API not ready yet; retry $i/12"
+            sleep 10
+          done
+          echo "Live API health check failed"
+          exit 1
+
+      - name: Check Data Analyst JD targeting
+        shell: bash
+        run: |
+          curl -fsS -X POST https://interviewlens-api.vercel.app/prep \
+            -H 'Content-Type: application/json' \
+            --data '{"role":"Data Analyst","job_description":"We need a Data Analyst skilled in SQL, Power BI, Excel and Python. Build dashboards, analyze business data and optimize SQL queries."}' > response.json
+          python - <<'PY'
+          import json
+          d=json.load(open('response.json'))
+          assert d.get('role_key') == 'data analyst', d
+          assert 'sql' in d.get('jd_keywords', []), d
+          assert 'power bi' in d.get('jd_keywords', []), d
+          assert 'python' in d.get('jd_keywords', []), d
+          assert len(d.get('questions', [])) >= 6, d
+          print('Data Analyst targeting: PASS')
+          print('JD keywords:', d['jd_keywords'])
+          PY
+
+      - name: Check Backend JD targeting
+        shell: bash
+        run: |
+          curl -fsS -X POST https://interviewlens-api.vercel.app/prep \
+            -H 'Content-Type: application/json' \
+            --data '{"role":"Backend Developer","job_description":"Build FastAPI REST APIs with PostgreSQL, authentication, Docker and AWS. Improve reliability and performance."}' > response.json
+          python - <<'PY'
+          import json
+          d=json.load(open('response.json'))
+          assert d.get('role_key') == 'backend developer', d
+          keys=d.get('jd_keywords', [])
+          assert 'fastapi' in keys, d
+          assert 'sql' in keys, d
+          questions=[x.get('question','').lower() for x in d.get('questions',[])]
+          assert any('fastapi' in q for q in questions), d
+          assert len(questions) >= 6, d
+          print('Backend targeting: PASS')
+          print('JD keywords:', keys)
+          PY
+
+      - name: Check live GitHub Pages site
+        shell: bash
+        run: |
+          curl -fsS https://karanaldo-07.github.io/web/ > site.html
+          grep -q 'InterviewLens' site.html
+          grep -q 'app.js' site.html
+          echo 'GitHub Pages: PASS'
